@@ -9,6 +9,7 @@ export { CatalogView } from './CatalogView';
 export { WorkflowDetailView } from './WorkflowDetailView';
 export { CreateWorkflowView } from './CreateWorkflowView';
 export { ApprovalQueueView } from './ApprovalQueueView';
+export { MissionRunsView } from './MissionRunsView';
 
 export type {
   CatalogViewProps,
@@ -27,3 +28,7 @@ export type {
 export type {
   ApprovalQueueViewProps,
 } from './ApprovalQueueView';
+
+export type {
+  MissionRunsViewProps,
+} from './MissionRunsView';
