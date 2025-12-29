@@ -8,6 +8,7 @@
 export { CatalogView } from './CatalogView';
 export { WorkflowDetailView } from './WorkflowDetailView';
 export { CreateWorkflowView } from './CreateWorkflowView';
+export { ApprovalQueueView } from './ApprovalQueueView';
 
 export type {
   CatalogViewProps,
@@ -22,3 +23,7 @@ export type {
   WorkflowConfig,
   WorkflowStepConfig,
 } from './CreateWorkflowView';
+
+export type {
+  ApprovalQueueViewProps,
+} from './ApprovalQueueView';
