@@ -1,5 +1,9 @@
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { Navigation } from './components/Navigation';
+import { ProtectedRoute } from './components/ProtectedRoute';
+import { LoginPage } from './pages/LoginPage';
+import { AuthCallbackPage } from './pages/AuthCallbackPage';
+import { useAuth } from './providers/AuthProvider';
 import { MissionCommandRole } from '@mastra/auth';
 
 // Import UI views from the parent package
@@ -11,11 +15,10 @@ import {
   MissionRunsView,
 } from '@mission-command/github-tools';
 
-// Mock current user role - TODO: Get from auth context
-const CURRENT_USER_ROLE: MissionCommandRole = 'admin';
-
-function App() {
+function AppContent() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const currentUserRole = user?.role ?? 'viewer';
 
   const handleWorkflowSelect = (workflowId: string) => {
     navigate(`/workflow/${workflowId}`);
@@ -27,66 +30,83 @@ function App() {
 
   return (
     <div className="min-h-screen bg-mastra-bg-1 text-mastra-el-text">
-      <Navigation currentUserRole={CURRENT_USER_ROLE} />
+      <Navigation currentUserRole={currentUserRole} />
 
       <main className="min-h-[calc(100vh-64px)]">
         <Routes>
-          {/* Home - Mission Catalog */}
+          {/* Public Routes */}
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/auth/callback" element={<AuthCallbackPage />} />
+
+          {/* Protected Routes */}
           <Route
             path="/"
             element={
-              <CatalogView
-                onWorkflowSelect={handleWorkflowSelect}
-                onWorkflowCreate={handleWorkflowCreate}
-                currentUserRole={CURRENT_USER_ROLE}
-              />
+              <ProtectedRoute>
+                <CatalogView
+                  onWorkflowSelect={handleWorkflowSelect}
+                  onWorkflowCreate={handleWorkflowCreate}
+                  currentUserRole={currentUserRole}
+                />
+              </ProtectedRoute>
             }
           />
 
-          {/* Workflow Detail */}
+          {/* Workflow Detail - requires viewer role */}
           <Route
             path="/workflow/:id"
             element={
-              <WorkflowDetailView
-                onBack={() => navigate('/')}
-                currentUserRole={CURRENT_USER_ROLE}
-              />
+              <ProtectedRoute requiredRole="viewer">
+                <WorkflowDetailView
+                  workflowId="" // Will be extracted from route params
+                  onBack={() => navigate('/')}
+                  onEdit={() => {/* TODO */}}
+                  onDelete={() => {/* TODO */}}
+                  currentUserRole={currentUserRole}
+                />
+              </ProtectedRoute>
             }
           />
 
-          {/* Create New Workflow */}
+          {/* Create New Workflow - requires admin role */}
           <Route
             path="/workflow/new"
             element={
-              <CreateWorkflowView
-                onSave={(workflow) => {
-                  // TODO: Implement workflow creation
-                  console.log('Creating workflow:', workflow);
-                  navigate('/');
-                }}
-                onCancel={() => navigate('/')}
-                currentUserRole={CURRENT_USER_ROLE}
-              />
+              <ProtectedRoute requiredRole="admin">
+                <CreateWorkflowView
+                  onSave={(workflow) => {
+                    // TODO: Implement workflow creation
+                    console.log('Creating workflow:', workflow);
+                    navigate('/');
+                  }}
+                  onCancel={() => navigate('/')}
+                  currentUserRole={currentUserRole}
+                />
+              </ProtectedRoute>
             }
           />
 
-          {/* Approval Queue */}
+          {/* Approval Queue - requires operator role */}
           <Route
             path="/approvals"
             element={
-              <ApprovalQueueView
-                currentUserRole={CURRENT_USER_ROLE}
-              />
+              <ProtectedRoute requiredRole="operator">
+                <ApprovalQueueView
+                  currentUserRole={currentUserRole}
+                />
+              </ProtectedRoute>
             }
           />
 
-          {/* Mission Runs */}
+          {/* Mission Runs - requires viewer role */}
           <Route
             path="/runs"
             element={
-              <MissionRunsView
-                currentUserRole={CURRENT_USER_ROLE}
-              />
+              <ProtectedRoute requiredRole="viewer">
+                <MissionRunsView
+                  currentUserRole={currentUserRole}
+                />
+              </ProtectedRoute>
             }
           />
 
@@ -98,4 +118,11 @@ function App() {
   );
 }
 
-export default App;
+// Main App component with providers
+export default function App() {
+  return (
+    <Routes>
+      <Route path="/*" element={<AppContent />} />
+    </Routes>
+  );
+}
