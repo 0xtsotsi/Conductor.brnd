@@ -16,6 +16,10 @@
     "./workflows": {
       "types": "./src/workflows/index.ts",
       "import": "./src/workflows/index.ts"
+    },
+    "./server": {
+      "types": "./src/server/index.ts",
+      "import": "./src/server/index.ts"
     }
   },
   "scripts": {
