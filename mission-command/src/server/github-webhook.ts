@@ -8,6 +8,7 @@
 
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { createGitHubWebhookRateLimit } from './rate-limit';
 
 /**
  * GitHub webhook event schemas
@@ -49,56 +50,63 @@ export const GitHubWebhookPayloadSchema = z.object({
 export type GitHubWebhookPayload = z.infer<typeof GitHubWebhookPayloadSchema>;
 
 /**
- * Suspended workflow run storage
- * In production, this would be a database
+ * Use persistent storage for suspended workflow runs
+ * Storage instance is set via setSuspendedRunsStorage()
  */
-interface SuspendedRun {
-  runId: string;
-  prNumber: number;
-  prUrl: string;
-  owner: string;
-  repo: string;
-  suspendedAt: Date;
-}
-
-// In-memory storage for suspended runs (production: use database)
-const suspendedRuns = new Map<string, SuspendedRun>();
+let suspendedRunsStorage: import('./suspended-runs-storage').SuspendedRunsStorage | null = null;
 
 /**
  * Register a suspended workflow run for later resume
  */
-export function registerSuspendedRun(params: {
+export async function registerSuspendedRun(params: {
   runId: string;
   prNumber: number;
   prUrl: string;
   owner: string;
   repo: string;
 }) {
-  const key = `${params.owner}/${params.repo}/${params.prNumber}`;
-  suspendedRuns.set(key, {
+  if (!suspendedRunsStorage) {
+    throw new Error('Suspended runs storage not initialized. Call setSuspendedRunsStorage() first.');
+  }
+
+  // Generate a unique ID for this run
+  const id = crypto.randomUUID();
+
+  await suspendedRunsStorage.registerSuspendedRun({
+    id,
     runId: params.runId,
     prNumber: params.prNumber,
     prUrl: params.prUrl,
     owner: params.owner,
     repo: params.repo,
-    suspendedAt: new Date(),
+    ttlDays: 7,
   });
 }
 
 /**
  * Find a suspended run by PR number
  */
-function findSuspendedRun(owner: string, repo: string, prNumber: number): SuspendedRun | undefined {
-  const key = `${owner}/${repo}/${prNumber}`;
-  return suspendedRuns.get(key);
+async function findSuspendedRun(
+  owner: string,
+  repo: string,
+  prNumber: number
+): Promise<import('./suspended-runs-storage').SuspendedRun | null> {
+  if (!suspendedRunsStorage) {
+    throw new Error('Suspended runs storage not initialized. Call setSuspendedRunsStorage() first.');
+  }
+
+  return await suspendedRunsStorage.findSuspendedRun(owner, repo, prNumber);
 }
 
 /**
  * Remove a suspended run after resume
  */
-function removeSuspendedRun(owner: string, repo: string, prNumber: number): void {
-  const key = `${owner}/${repo}/${prNumber}`;
-  suspendedRuns.delete(key);
+async function removeSuspendedRun(owner: string, repo: string, prNumber: number): Promise<void> {
+  if (!suspendedRunsStorage) {
+    throw new Error('Suspended runs storage not initialized. Call setSuspendedRunsStorage() first.');
+  }
+
+  await suspendedRunsStorage.removeSuspendedRun(owner, repo, prNumber);
 }
 
 /**
@@ -122,6 +130,15 @@ let resumeWorkflow: WorkflowResumeFunction | null = null;
  */
 export function setWorkflowResumeFunction(fn: WorkflowResumeFunction) {
   resumeWorkflow = fn;
+}
+
+/**
+ * Set the suspended runs storage instance
+ */
+export function setSuspendedRunsStorage(
+  storage: import('./suspended-runs-storage').SuspendedRunsStorage
+) {
+  suspendedRunsStorage = storage;
 }
 
 /**
@@ -173,8 +190,9 @@ export function createGitHubWebhookRouter() {
    *
    * Receives GitHub webhook events and resumes workflows.
    * Requires signature verification.
+   * Rate limited: 100 requests/hour per IP.
    */
-  router.post('/webhooks/github', async (c) => {
+  router.post('/webhooks/github', createGitHubWebhookRateLimit(), async (c) => {
     const logger = c.get('logger') || console;
 
     try {
@@ -226,7 +244,7 @@ export function createGitHubWebhookRouter() {
       const prUrl = payload.pull_request.html_url;
 
       // Find suspended workflow run
-      const suspendedRun = findSuspendedRun(owner.login, repo.name, prNumber);
+      const suspendedRun = await findSuspendedRun(owner.login, repo.name, prNumber);
 
       if (!suspendedRun) {
         logger.info(`No suspended run found for PR #${prNumber} in ${owner.login}/${repo.name}`);
@@ -281,7 +299,7 @@ export function createGitHubWebhookRouter() {
         });
 
         // Remove from suspended runs after successful resume
-        removeSuspendedRun(owner.login, repo.name, prNumber);
+        await removeSuspendedRun(owner.login, repo.name, prNumber);
 
         logger.info(`Workflow run ${suspendedRun.runId} resumed successfully`);
       }
@@ -305,11 +323,18 @@ export function createGitHubWebhookRouter() {
    *
    * Health check endpoint for webhook handler.
    */
-  router.get('/webhooks/github/health', (c) => {
+  router.get('/webhooks/github/health', async (c) => {
+    let suspendedRunsCount = 0;
+
+    if (suspendedRunsStorage) {
+      const runs = await suspendedRunsStorage.listSuspendedRuns();
+      suspendedRunsCount = runs.length;
+    }
+
     return c.json({
       status: 'ok',
       timestamp: new Date().toISOString(),
-      suspendedRuns: suspendedRuns.size,
+      suspendedRuns: suspendedRunsCount,
     });
   });
 
@@ -318,20 +343,61 @@ export function createGitHubWebhookRouter() {
    *
    * List all suspended workflow runs (for debugging/monitoring).
    */
-  router.get('/webhooks/github/suspended', (c) => {
-    const runs = Array.from(suspendedRuns.values()).map(run => ({
-      runId: run.runId,
-      prNumber: run.prNumber,
-      prUrl: run.prUrl,
-      owner: run.owner,
-      repo: run.repo,
-      suspendedAt: run.suspendedAt.toISOString(),
-    }));
+  router.get('/webhooks/github/suspended', async (c) => {
+    if (!suspendedRunsStorage) {
+      return c.json({
+        error: 'Suspended runs storage not initialized',
+      }, 500);
+    }
+
+    const runs = await suspendedRunsStorage.listSuspendedRuns();
 
     return c.json({
       count: runs.length,
-      runs,
+      runs: runs.map(run => ({
+        runId: run.runId,
+        prNumber: run.prNumber,
+        prUrl: run.prUrl,
+        owner: run.owner,
+        repo: run.repo,
+        createdAt: run.createdAt.toISOString(),
+        expiresAt: run.expiresAt.toISOString(),
+      })),
     });
+  });
+
+  /**
+   * POST /webhooks/github/cleanup
+   *
+   * Manually trigger cleanup of expired suspended runs.
+   * Also runs automatically via background job.
+   */
+  router.post('/webhooks/github/cleanup', async (c) => {
+    if (!suspendedRunsStorage) {
+      return c.json({
+        error: 'Suspended runs storage not initialized',
+      }, 500);
+    }
+
+    try {
+      const cleaned = await suspendedRunsStorage.cleanupExpiredRuns();
+      const remaining = (await suspendedRunsStorage.listSuspendedRuns()).length;
+
+      return c.json({
+        message: 'Cleanup completed',
+        cleaned,
+        remaining,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      const logger = c.get('logger') || console;
+      logger.error('Manual cleanup failed:', error);
+
+      return c.json({
+        error: 'Cleanup failed',
+        message: error instanceof Error ? error.message : String(error),
+      }, 500);
+    }
   });
 
   return router;

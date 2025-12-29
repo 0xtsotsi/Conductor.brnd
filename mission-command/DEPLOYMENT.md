@@ -1,424 +1,611 @@
-# Mission Command Centre - Deployment Guide
+# Deployment Guide - Mission Command Centre
 
-## Overview
+This guide covers deploying Mission Command Centre to production.
 
-This guide covers deploying Mission Command Centre to production using Docker, Docker Compose, or ECS (AWS Elastic Container Service).
+## Table of Contents
+
+1. [Prerequisites](#prerequisites)
+2. [Local Deployment (Docker Compose)](#local-deployment)
+3. [Production Deployment](#production-deployment)
+4. [Environment Configuration](#environment-configuration)
+5. [Database Setup](#database-setup)
+6. [Monitoring & Logging](#monitoring--logging)
+7. [Troubleshooting](#troubleshooting)
 
 ## Prerequisites
 
-- Docker 20.10+ and Docker Compose 2.0+
-- Node.js 20+ (for local development)
-- PostgreSQL 15+ (for production database)
-- GitHub OAuth app (optional)
-- Google OAuth app (optional)
-- Domain name (for production)
+### Required
 
-## Environment Variables
+- **Docker** 20.10+
+- **Docker Compose** 2.0+
+- **PostgreSQL** 14+ (or use Docker)
+- **GitHub Account** (for OAuth app)
+- **Google Account** (for OAuth app, optional)
+- **Domain Name** (for production)
 
-Create a `.env` file in the mission-command directory:
+### Optional
 
-```env
-# JWT Secret (required, generate with: openssl rand -base64 32)
-JWT_AUTH_SECRET=your-super-secret-key-change-this
+- **SSL Certificate** (for HTTPS)
+- **Monitoring Stack** (Prometheus + Grafana)
+- **Log Aggregation** (ELK, Loki, etc.)
 
-# Frontend URL (required)
-FRONTEND_URL=http://localhost:3000  # Development
-# FRONTEND_URL=https://missioncommand.com  # Production
+## Local Deployment (Docker Compose)
 
-# GitHub OAuth (optional - omit to disable)
-GITHUB_CLIENT_ID=your-github-client-id
-GITHUB_CLIENT_SECRET=your-github-client-secret
+### 1. Clone Repository
 
-# Google OAuth (optional - omit to disable)
-GOOGLE_CLIENT_ID=your-google-client-id
-GOOGLE_CLIENT_SECRET=your-google-client-secret
-
-# Default role for new users (optional, default: viewer)
-DEFAULT_ROLE=viewer
-
-# Database (required for production)
-DATABASE_URL=postgresql://user:password@localhost:5432/mission_command
-
-# Or use LibSQL (development only)
-LIBSQL_URL=file:mission-command.db
+```bash
+git clone https://github.com/mastra-ai/mastra.git
+cd mastra
+cd packages/mission-command
 ```
 
-## Development Deployment
+### 2. Configure Environment
 
-### Quick Start with Docker Compose
+```bash
+cp .env.example .env
+nano .env
+```
 
-1. **Clone and build:**
-   ```bash
-   git clone https://github.com/your-org/Conductor-brnd.git
-   cd Conductor-brnd
-   pnpm install
-   pnpm build
-   ```
+Set required variables:
+```bash
+# Database
+DATABASE_URL=postgresql://mission_command:password@postgres:5432/mission_command_db
 
-2. **Configure environment:**
-   ```bash
-   cd mission-command
-   cp .env.example .env
-   # Edit .env with your configuration
-   ```
+# GitHub
+GITHUB_TOKEN=ghp_your_token_here
+GITHUB_WEBHOOK_SECRET=your_random_secret_here
 
-3. **Start services:**
-   ```bash
-   docker-compose up -d
-   ```
+# JWT
+JWT_SECRET=your_jwt_secret_here
 
-4. **Access the application:**
-   - UI: http://localhost:3000
-   - API: http://localhost:4111
+# OAuth (optional for local)
+GITHUB_CLIENT_ID=your_github_client_id
+GITHUB_CLIENT_SECRET=your_github_client_secret
+```
 
-5. **View logs:**
-   ```bash
-   docker-compose logs -f
-   ```
+### 3. Start Services
 
-6. **Stop services:**
-   ```bash
-   docker-compose down
-   ```
+```bash
+docker-compose up -d
+```
+
+This starts:
+- PostgreSQL on port 5432
+- Mission Command Server on port 4111
+- UI on port 3000
+- Nginx reverse proxy on ports 80/443 (optional)
+- Prometheus on port 9090 (optional)
+- Grafana on port 3001 (optional)
+
+### 4. Verify Deployment
+
+```bash
+# Check health
+curl http://localhost:4111/webhooks/github/health
+
+# Should return:
+# {"status":"ok","timestamp":"...","suspendedRuns":0}
+```
+
+### 5. Access UI
+
+Open browser: http://localhost:3000
 
 ## Production Deployment
 
-### Option 1: Docker Compose (Production)
+### Option 1: Docker Compose (Recommended for Single Server)
 
-1. **Build production images:**
-   ```bash
-   docker build -t mission-command-ui:latest -f mission-command/Dockerfile --target ui-production .
-   docker build -t mission-command-server:latest -f mission-command/Dockerfile --target server .
-   ```
+#### 1. Prepare Server
 
-2. **Configure production environment:**
-   ```bash
-   cp .env.example .env.prod
-   # Edit .env.prod with production values
-   ```
+```bash
+# Update system
+sudo apt update && sudo apt upgrade -y
 
-3. **Start production stack:**
-   ```bash
-   docker-compose -f docker-compose.prod.yml --env-file .env.prod up -d
-   ```
+# Install Docker
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
 
-### Option 2: AWS ECS (Recommended for Scale)
+# Install Docker Compose
+sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+sudo chmod +x /usr/local/bin/docker-compose
 
-#### Prerequisites
+# Add user to docker group
+sudo usermod -aG docker $USER
 
-- AWS account with ECS, ECR, and ALB access
-- AWS CLI configured
-- Domain with SSL certificate (AWS Certificate Manager)
+# Re-login for group changes
+```
 
-#### Deployment Steps
+#### 2. Create Deployment Directory
 
-1. **Create ECR repository:**
-   ```bash
-   aws ecr create-repository --repository-name mission-command
-   ```
+```bash
+sudo mkdir -p /opt/mission-command
+sudo chown $USER:$USER /opt/mission-command
+cd /opt/mission-command
+```
 
-2. **Login to ECR:**
-   ```bash
-   aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin <account-id>.dkr.ecr.us-east-1.amazonaws.com
-   ```
+#### 3. Copy Files
 
-3. **Build and push image:**
-   ```bash
-   docker build -t mission-command:latest -f mission-command/Dockerfile .
-   docker tag mission-command:latest <account-id>.dkr.ecr.us-east-1.amazonaws.com/mission-command:latest
-   docker push <account-id>.dkr.ecr.us-east-1.amazonaws.com/mission-command:latest
-   ```
+```bash
+# Copy docker-compose.yml
+scp docker-compose.yml user@server:/opt/mission-command/
 
-4. **Create ECS cluster:**
-   ```bash
-   aws ecs create-cluster --cluster-name mission-command
-   ```
+# Copy .env file (with production values)
+scp .env user@server:/opt/mission-command/
+```
 
-5. **Create task definition** (save as `task-definition.json`):
-   ```json
-   {
-     "family": "mission-command",
-     "networkMode": "awsvpc",
-     "requiresCompatibilities": ["FARGATE"],
-     "cpu": "512",
-     "memory": "1024",
-     "containerDefinitions": [
-       {
-         "name": "mission-command-ui",
-         "image": "<account-id>.dkr.ecr.us-east-1.amazonaws.com/mission-command:latest",
-         "portMappings": [{"containerPort": 3000, "protocol": "tcp"}],
-         "environment": [
-           {"name": "VITE_MASTRA_API_URL", "value": "http://localhost:4111"},
-           {"name": "NODE_ENV", "value": "production"}
-         ],
-         "essential": true
-       },
-       {
-         "name": "mastra-server",
-         "image": "<account-id>.dkr.ecr.us-east-1.amazonaws.com/mission-command:latest",
-         "portMappings": [{"containerPort": 4111, "protocol": "tcp"}],
-         "environment": [
-           {"name": "NODE_ENV", "value": "production"},
-           {"name": "DATABASE_URL", "value": "your-production-db-url"}
-         ],
-         "secrets": [
-           {"name": "JWT_AUTH_SECRET", "valueFrom": "arn:aws:secretsmanager:us-east-1:<account-id>:secret:mission-command/jwt-secret"}
-         ],
-         "essential": true
-       }
-     ]
-   }
-   ```
+#### 4. Configure Production Environment
 
-6. **Register task definition:**
-   ```bash
-   aws ecs register-task-definition --cli-input-json file://task-definition.json
-   ```
+Edit `.env` on the server:
 
-7. **Create ECS service:**
-   ```bash
-   aws ecs create-service \
-     --cluster mission-command \
-     --service-name mission-command \
-     --task-definition mission-command \
-     --desired-count 2 \
-     --launch-type FARGATE \
-     --network-configuration "awsvpcConfiguration={subnets=[subnet-xxx,subnet-yyy],securityGroups=[sg-xxx],assignPublicIp=ENABLED}"
-   ```
+```bash
+nano .env
+```
 
-8. **Configure Application Load Balancer:**
-   ```bash
-   # Create target group
-   aws elbv2 create-target-group --name mission-command-tg --port 3000 --protocol HTTP --vpc-id vpc-xxx
+Production values:
+```bash
+# Database
+DATABASE_URL=postgresql://user:password@localhost:5432/mission_command_db
 
-   # Create load balancer
-   aws elbv2 create-load-balancer --name mission-command-alb --subnets subnet-xxx subnet-yyy --security-groups sg-xxx
+# GitHub
+GITHUB_TOKEN=ghp_production_token
+GITHUB_WEBHOOK_SECRET=strong_random_secret_here
 
-   # Create listener
-   aws elbv2 create-listener --load-balancer-arn arn:aws:elasticloadbalancing:us-east-1:<account-id>:load-balancer/net/xxx --protocol HTTP --port 80 --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:<account-id>:targetgroup/xxx
-   ```
+# JWT
+JWT_SECRET=very_strong_random_secret_here
 
-9. **Set up CI/CD:**
-   - The `.github/workflows/mission-command-deploy.yml` workflow is already configured
-   - Add AWS secrets to GitHub repository settings:
-     - `AWS_ACCESS_KEY_ID`
-     - `AWS_SECRET_ACCESS_KEY`
-     - `POSTGRES_USER`
-     - `POSTGRES_PASSWORD`
+# OAuth
+GITHUB_CLIENT_ID=your_production_client_id
+GITHUB_CLIENT_SECRET=your_production_client_secret
+GITHUB_CALLBACK_URL=https://your-domain.com/auth/github/callback
 
-10. **Deploy:**
-    ```bash
-    # Trigger deployment from GitHub Actions
-    gh workflow run mission-command-deploy.yml -f environment=production
-    ```
+# Admins
+ADMIN_EMAILS=admin@yourdomain.com,ops@yourdomain.com
+ADMIN_DOMAINS=yourdomain.com
+```
 
-### Option 3: Vercel (UI Only) + Railway (Server)
+#### 5. Deploy
 
-#### Deploy UI to Vercel
+```bash
+# Start services
+docker-compose up -d
 
-1. **Install Vercel CLI:**
-   ```bash
-   npm install -g vercel
-   ```
+# Run migrations
+docker-compose exec server pnpm db:migrate
 
-2. **Deploy:**
-   ```bash
-   cd mission-command/ui
-   vercel --prod
-   ```
+# Check logs
+docker-compose logs -f
+```
 
-3. **Configure environment variables in Vercel dashboard:**
-   - `VITE_MASTRA_API_URL`: Your Railway server URL
+### Option 2: Kubernetes (Recommended for Scale)
 
-#### Deploy Server to Railway
+#### 1. Create Namespace
 
-1. **Install Railway CLI:**
-   ```bash
-   npm install -g @railway/cli
-   ```
+```bash
+kubectl create namespace mission-command
+```
 
-2. **Create Railway project and deploy:**
-   ```bash
-   railway login
-   railway init
-   railway up
-   ```
+#### 2. Create Secrets
 
-3. **Configure environment variables in Railway dashboard:**
-   - `JWT_AUTH_SECRET`
-   - `DATABASE_URL`
-   - OAuth credentials
+```bash
+# Database secret
+kubectl create secret generic mission-command-db \
+  --from-literal=database-url="postgresql://..." \
+  -n mission-command
+
+# GitHub secret
+kubectl create secret generic mission-command-github \
+  --from-literal=token="ghp_..." \
+  --from-literal=webhook-secret="..." \
+  -n mission-command
+
+# JWT secret
+kubectl create secret generic mission-command-jwt \
+  --from-literal=secret="..." \
+  -n mission-command
+
+# OAuth secret
+kubectl create secret generic mission-command-oauth \
+  --from-literal=github-client-id="..." \
+  --from-literal=github-client-secret="..." \
+  -n mission-command
+```
+
+#### 3. Deploy PostgreSQL
+
+```bash
+kubectl apply -f k8s/postgres/
+```
+
+#### 4. Deploy Application
+
+```bash
+kubectl apply -f k8s/deployment.yaml
+kubectl apply -f k8s/service.yaml
+kubectl apply -f k8s/ingress.yaml
+```
+
+#### 5. Verify Deployment
+
+```bash
+# Check pods
+kubectl get pods -n mission-command
+
+# Check logs
+kubectl logs -f deployment/mission-command -n mission-command
+
+# Port forward for testing
+kubectl port-forward svc/mission-command 4111:4111 -n mission-command
+```
+
+### Option 3: Cloud Platforms
+
+#### Vercel (UI Only)
+
+```bash
+# Install Vercel CLI
+npm i -g vercel
+
+# Deploy UI
+cd ui
+vercel --prod
+```
+
+#### Railway / Render
+
+1. Connect GitHub repo
+2. Select `mission-command` package
+3. Configure environment variables
+4. Deploy!
+
+#### AWS ECS
+
+1. Push Docker image to ECR
+2. Create ECS task definition
+3. Create ECS service
+4. Configure ALB
+5. Deploy!
+
+## Environment Configuration
+
+### Required Variables
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `DATABASE_URL` | PostgreSQL connection string | `postgresql://...` |
+| `GITHUB_TOKEN` | GitHub personal access token | `ghp_xxx` |
+| `GITHUB_WEBHOOK_SECRET` | Webhook signature secret | `random_string` |
+| `JWT_SECRET` | JWT signing secret | `random_string` |
+
+### Optional Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `PORT` | Server port | `4111` |
+| `UI_PORT` | UI port | `3000` |
+| `NODE_ENV` | Environment | `production` |
+| `CLEANUP_INTERVAL_MS` | Cleanup interval | `3600000` |
+| `RATE_LIMIT_CLEANUP_INTERVAL_MS` | Rate limit cleanup | `60000` |
+
+### OAuth Variables (Optional)
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `GITHUB_CLIENT_ID` | GitHub OAuth client ID | `Iv1...` |
+| `GITHUB_CLIENT_SECRET` | GitHub OAuth secret | `ghp_...` |
+| `GITHUB_CALLBACK_URL` | OAuth callback URL | `https://domain.com/auth/github/callback` |
+| `GOOGLE_CLIENT_ID` | Google OAuth client ID | `xxx.apps.googleusercontent.com` |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth secret | `GOCSPX_...` |
+| `GOOGLE_CALLBACK_URL` | Google OAuth callback | `https://domain.com/auth/google/callback` |
+| `ADMIN_EMAILS` | Admin email whitelist | `admin@domain.com` |
+| `ADMIN_DOMAINS` | Admin domain whitelist | `domain.com` |
 
 ## Database Setup
 
-### PostgreSQL (Production)
+### PostgreSQL
 
-1. **Create database:**
-   ```sql
-   CREATE DATABASE mission_command;
-   ```
+#### 1. Create Database
 
-2. **Run migrations:**
-   ```bash
-   psql -U postgres -d mission_command -f migration.sql
-   ```
+```bash
+# Using psql
+createdb mission_command_db
 
-3. **Create admin user:**
-   ```sql
-   INSERT INTO mission_command_users (id, sub, email, name, provider, role, created_at, updated_at)
-   VALUES (
-     gen_random_uuid(),
-     'admin-001',
-     'admin@yourcompany.com',
-     'Admin User',
-     'github',
-     'admin',
-     NOW(),
-     NOW()
-   );
-   ```
+# Or Docker
+docker exec -it postgres psql -U postgres
+CREATE DATABASE mission_command_db;
+CREATE USER mission_command WITH PASSWORD 'password';
+GRANT ALL PRIVILEGES ON DATABASE mission_command_db TO mission_command;
+```
 
-### Supabase (Alternative)
+#### 2. Run Migrations
 
-1. **Create project at https://supabase.com**
-2. **Get connection string from Settings > Database**
-3. **Run migrations in Supabase SQL Editor**
-4. **Configure environment variable:**
-   ```env
-   DATABASE_URL=postgresql://postgres:[YOUR-PASSWORD]@db.[YOUR-PROJECT-REF].supabase.co:5432/postgres
-   ```
+```bash
+# From server container
+docker-compose exec server pnpm db:migrate
+
+# Or locally
+cd packages/mission-command
+pnpm db:migrate
+```
+
+#### 3. Verify Tables
+
+```bash
+docker-compose exec postgres psql -U mission_command -d mission_command_db -c "\dt"
+
+# Should show:
+# mastra_suspended_runs
+# users
+# sessions
+# audit_log
+```
+
+### Backup & Restore
+
+#### Backup
+
+```bash
+# Automated backup
+docker-compose exec postgres pg_dump -U mission_command mission_command_db > backup.sql
+
+# Or cron job
+0 2 * * * docker-compose exec -T postgres pg_dump -U mission_command mission_command_db > /backups/backup_$(date +\%Y\%m\%d).sql
+```
+
+#### Restore
+
+```bash
+docker-compose exec -T postgres psql -U mission_command mission_command_db < backup.sql
+```
 
 ## Monitoring & Logging
 
 ### Health Checks
 
-Health check endpoint: `GET /health`
+```bash
+# API health
+curl http://localhost:4111/webhooks/github/health
 
-Configure in ECS target group or Docker Compose healthcheck:
+# Docker health
+docker-compose ps
 
-```yaml
-healthcheck:
-  test: ["CMD", "curl", "-f", "http://localhost:4111/health"]
-  interval: 30s
-  timeout: 10s
-  retries: 3
-  start_period: 40s
+# Kubernetes health
+kubectl get pods -n mission-command
 ```
-
-### Logging
-
-Logs are captured by:
-- Docker: `docker-compose logs -f [service]`
-- ECS: CloudWatch Logs (automatically enabled)
-- Railway: Built-in log viewer
 
 ### Metrics
 
-For production monitoring, consider:
-- Prometheus + Grafana
-- DataDog
-- New Relic
+Prometheus metrics are exposed on `/metrics` endpoint:
 
-## Security Checklist
+- Webhook request count
+- Request duration
+- Suspended runs count
+- Database query duration
 
-- [ ] Change `JWT_AUTH_SECRET` to strong random value
-- [ ] Enable HTTPS (use Let's Encrypt or AWS Certificate Manager)
-- [ ] Set up firewall rules (only allow ports 80, 443)
-- [ ] Enable rate limiting on API endpoints
-- [ ] Configure CORS to only allow your domain
-- [ ] Set up database backups
-- [ ] Enable audit logging
-- [ ] Use secrets manager (AWS Secrets Manager, Railway env vars)
-- [ ] Regular security updates
+### Logs
+
+#### Docker Logs
+
+```bash
+# All services
+docker-compose logs -f
+
+# Specific service
+docker-compose logs -f server
+
+# Last 100 lines
+docker-compose logs --tail=100 server
+```
+
+#### Kubernetes Logs
+
+```bash
+# All pods
+kubectl logs -f -n mission-command --all-containers
+
+# Specific pod
+kubectl logs -f deployment/mission-command -n mission-command
+```
+
+### Monitoring Stack
+
+If using Prometheus + Grafana:
+
+1. **Access Grafana**: http://localhost:3001 (admin/admin)
+2. **Add Prometheus datasource**: http://prometheus:9090
+3. **Import dashboard**: Use provided JSON
+
+Key metrics to monitor:
+- `webhook_requests_total` - Webhook request count
+- `webhook_duration_seconds` - Request duration
+- `suspended_runs_total` - Active suspended runs
+- `database_query_duration_seconds` - DB query performance
 
 ## Troubleshooting
 
-### Container won't start
+### Container Won't Start
 
 ```bash
 # Check logs
-docker-compose logs mission-command-ui
+docker-compose logs server
 
-# Check resource usage
-docker stats
+# Common issues:
+# 1. Port already in use
+sudo lsof -i :4111
 
-# Restart service
-docker-compose restart mission-command-ui
+# 2. Database connection failed
+# Check DATABASE_URL is correct
+# Check PostgreSQL is running
+docker-compose ps postgres
+
+# 3. Missing environment variable
+# Check .env file exists and has all required vars
 ```
 
-### Database connection errors
+### Database Connection Issues
 
-- Verify `DATABASE_URL` is correct
-- Check database is accepting connections
-- Ensure network allows traffic on port 5432
-- Check firewall rules
+```bash
+# Test connection from server container
+docker-compose exec server sh -c "nc -zv postgres 5432"
 
-### OAuth not working
+# Check PostgreSQL logs
+docker-compose logs postgres
 
-- Verify OAuth app credentials
-- Check callback URL matches OAuth app configuration
-- Verify `FRONTEND_URL` is correct
-- Check browser console for errors
+# Verify credentials
+docker-compose exec postgres psql -U mission_command -d mission_command_db -c "SELECT 1;"
+```
+
+### Webhook Not Received
+
+```bash
+# Check webhook is configured
+curl -X POST http://localhost:4111/webhooks/github \
+  -H "Content-Type: application/json" \
+  -d '{"test": true}'
+
+# Check GitHub webhook configuration
+# 1. Payload URL matches
+# 2. Secret matches
+# 3. Events are selected
+```
+
+### High Memory Usage
+
+```bash
+# Check container stats
+docker stats
+
+# Limit memory in docker-compose.yml
+services:
+  server:
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+```
+
+### Slow Performance
+
+```bash
+# Check database query performance
+docker-compose exec postgres psql -U mission_command -d mission_command_db \
+  -c "SELECT * FROM pg_stat_statements ORDER BY mean_exec_time DESC LIMIT 10;"
+
+# Check indexes
+docker-compose exec postgres psql -U mission_command -d mission_command_db \
+  -c "\d mastra_suspended_runs"
+
+# Add missing indexes if needed
+```
 
 ## Scaling
 
 ### Vertical Scaling
 
-Increase CPU/memory in `task-definition.json` or `docker-compose.yml`:
+Increase resources in `docker-compose.yml`:
 
 ```yaml
 services:
-  mastra-server:
+  server:
     deploy:
       resources:
         limits:
           cpus: '2'
-          memory: 4G
+          memory: 2G
 ```
 
 ### Horizontal Scaling
 
-Increase desired count in ECS or use Docker Swarm:
-
 ```bash
-docker-compose up -d --scale mission-command-ui=3 --scale mastra-server=2
+# Scale server to 3 instances
+docker-compose up -d --scale server=3
+
+# Add load balancer (nginx, traefik)
 ```
 
-## Backup & Restore
-
-### Database Backup
+### Kubernetes Scaling
 
 ```bash
-# Backup
-pg_dump $DATABASE_URL > backup-$(date +%Y%m%d).sql
+# Scale to 3 replicas
+kubectl scale deployment/mission-command --replicas=3 -n mission-command
 
-# Restore
-pssql $DATABASE_URL < backup-20241229.sql
+# Enable autoscaling
+kubectl autoscale deployment/mission-command \
+  --min=2 --max=10 \
+  --cpu-percent=70 \
+  -n mission-command
 ```
 
-### Volume Backup
+## Security
+
+### SSL/TLS
 
 ```bash
-# Backup Docker volumes
-docker run --rm -v mission-command-data:/data -v $(pwd):/backup alpine tar czf /backup/mission-command-backup.tar.gz /data
+# Generate self-signed cert (for testing)
+openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 365 -nodes
+
+# Or use Let's Encrypt
+certbot certonly --standalone -d mission-command.example.com
 ```
 
-## Cost Estimation
+### Firewall Rules
 
-**AWS ECS (us-east-1):**
-- Fargate (0.5 vCPU, 1GB): ~$20/month per instance
-- ALB: ~$20/month
-- RDS PostgreSQL (t3.micro): ~$15/month
-- **Total**: ~$75/month for 2 instances
+```bash
+# Allow only necessary ports
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+sudo ufw allow 22/tcp
+sudo ufw enable
+```
 
-**Alternative:**
-- Railway: ~$5-20/month
-- Vercel: Free tier, then $20/month
-- **Total**: ~$25-40/month
+### Secrets Management
+
+**Never commit secrets to git!**
+
+Use environment variables or secret managers:
+- Docker Secrets
+- Kubernetes Secrets
+- AWS Secrets Manager
+- HashiCorp Vault
+
+## Updates & Maintenance
+
+### Update Application
+
+```bash
+# Pull latest image
+docker-compose pull
+
+# Restart with new image
+docker-compose up -d
+
+# Or zero-downtime deployment
+docker-compose up -d --no-deps --build server
+```
+
+### Database Migration
+
+```bash
+# Backup first
+docker-compose exec postgres pg_dump -U mission_command mission_command_db > backup.sql
+
+# Run migration
+docker-compose exec server pnpm db:migrate
+
+# Verify
+docker-compose exec server pnpm db:migrate:status
+```
 
 ## Support
 
-For issues or questions:
-- GitHub Issues: https://github.com/mastra-ai/mastra/issues
-- Documentation: https://mastra.ai/docs
-- Discord: https://mastra.ai/discord
+For issues and questions:
+- **Documentation**: [Mastra Docs](https://mastra.ai/docs)
+- **Issues**: [GitHub Issues](https://github.com/mastra-ai/mastra/issues)
+- **Discord**: [Mastra Discord](https://discord.gg/mastra-ai)
+
+---
+
+**Deployment complete!** 🚀
+
+For additional help, see the main [README.md](./README.md) or [DEVELOPMENT.md](./DEVELOPMENT.md).

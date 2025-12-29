@@ -1,411 +1,338 @@
-# Mission Command Centre - GitHub Agent Tools
+# Mission Command Centre
 
-GitHub integration tools for Mastra agents to interact with GitHub repositories in code review and landing workflows.
+**A web-based UI for managing Mastra workflows that orchestrate AI agents in code review and landing workflows.**
 
-## Overview
+## 🎯 Overview
 
-This package provides 5 GitHub agent tools that enable Mastra workflows to:
-- Create feature branches
-- Create pull requests
-- Fetch PR diffs for review
-- Merge approved PRs
-- Post comments on PRs
+Mission Command Centre is a workflow orchestration UI built on top of **Mastra** - the TypeScript-first AI agent framework. It provides a web interface for creating, monitoring, and managing AI-powered workflows with human-in-the-loop approval gates.
 
-## Installation
+### Key Features
 
-```bash
-# From Mission Command project root
-pnpm install
+- 🎨 **Modern React UI** - Built with Vite, TypeScript, and Tailwind CSS
+- 🤖 **AI Agent Orchestration** - Native Mastra agents run within workflows
+- 🔀 **Human-in-the-Loop** - Suspend/resume workflows for human approval
+- 🔗 **GitHub Integration** - Automated branch creation, PRs, and merges
+- 📊 **Real-Time Monitoring** - Live workflow execution tracking
+- 🔒 **Production-Ready** - PostgreSQL storage, rate limiting, auto-cleanup
+
+## 🏗️ Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Mission Command UI (React)                    │
+│                    Vite + TypeScript + Tailwind                  │
+│                    Port: 3000                                    │
+└────────────────────────────┬────────────────────────────────────┘
+                             │ REST API
+                             │ Port: 4111
+┌────────────────────────────▼────────────────────────────────────┐
+│                         Mastra Server                             │
+│  ┌─────────────┐  ┌──────────────┐  ┌─────────────┐            │
+│  │ Workflow    │  │ Agent        │  │ Storage     │            │
+│  │ Executor    │  │ Runtime      │  │ Layer       │            │
+│  └─────────────┘  └──────────────┘  └─────────────┘            │
+└────────────────────────────┬─────────────────────────────────────┘
+                             │
+┌────────────────────────────▼─────────────────────────────────────┐
+│                    Storage Layer                                  │
+│  ┌─────────────┐  ┌──────────────┐                               │
+│  │ LibSQL      │  │ PostgreSQL   │  (dev: LibSQL, prod: Supabase) │
+│  │ (dev)       │  │ (prod)       │                               │
+│  └─────────────┘  └──────────────┘                               │
+└───────────────────────────────────────────────────────────────────┘
 ```
 
-## Setup
+## 📦 Installation
+
+### Prerequisites
+
+- Node.js 18+
+- pnpm 9.7.0+
+- PostgreSQL (for production) or LibSQL (for development)
+
+### Setup
+
+```bash
+# Clone the repository
+git clone https://github.com/mastra-ai/mastra.git
+cd mastra
+cd packages/mission-command
+
+# Install dependencies
+pnpm install
+
+# Copy environment variables
+cp .env.example .env
+
+# Edit .env with your configuration
+nano .env
+
+# Build the package
+pnpm build
+```
 
 ### Environment Variables
 
-Required environment variable:
+```bash
+# Database (required for production)
+DATABASE_URL=postgresql://user:password@localhost:5432/mission_command
+
+# GitHub (required)
+GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+GITHUB_WEBHOOK_SECRET=your_random_webhook_secret_here
+
+# Server (optional)
+PORT=4111
+
+# Cleanup (optional)
+CLEANUP_INTERVAL_MS=3600000
+RATE_LIMIT_CLEANUP_INTERVAL_MS=60000
+```
+
+## 🚀 Quick Start
+
+### 1. Start the UI (Development)
 
 ```bash
-GITHUB_TOKEN=ghp_xxx  # GitHub Personal Access Token with repo permissions
+cd ui
+pnpm install
+pnpm dev
 ```
 
-### Token Permissions
+The UI will be available at http://localhost:3000
 
-The GitHub token must have the following permissions:
-- `repo` (full repository access)
-  - `repo:status` (read/write commit status)
-  - `repo_deployment` (access deployment status)
-  - `public_repo` (access public repos)
-  - `repo:invite` (accept repo invites)
-  - `security_events` (read/write security events)
-
-## Tools
-
-### 1. githubCreateBranch
-
-Create a new feature branch from a base branch.
-
-**Input:**
-```typescript
-{
-  owner: string;        // Repository owner (username or org)
-  repo: string;         // Repository name
-  branchName: string;   // New branch name (e.g., "feature/my-feature")
-  baseBranch: string;   // Base branch to branch from (default: "main")
-}
-```
-
-**Output:**
-```typescript
-{
-  success: boolean;
-  branchName: string;
-  ref?: string;
-  sha?: string;
-}
-```
-
-**Example:**
-```typescript
-import { githubCreateBranch } from './tools/github-tools';
-
-const result = await githubCreateBranch.execute({
-  inputData: {
-    owner: 'my-org',
-    repo: 'my-repo',
-    branchName: 'feature/add-auth',
-    baseBranch: 'main',
-  },
-});
-```
-
-### 2. githubCreatePR
-
-Create a pull request in a GitHub repository.
-
-**Input:**
-```typescript
-{
-  owner: string;      // Repository owner
-  repo: string;       // Repository name
-  title: string;      // PR title
-  body: string;       // PR description
-  head: string;       // Source branch
-  base: string;       // Target branch (default: "main")
-}
-```
-
-**Output:**
-```typescript
-{
-  success: boolean;
-  prNumber: number;
-  prUrl: string;
-  htmlUrl: string;
-  state: string;
-}
-```
-
-**Example:**
-```typescript
-import { githubCreatePR } from './tools/github-tools';
-
-const result = await githubCreatePR.execute({
-  inputData: {
-    owner: 'my-org',
-    repo: 'my-repo',
-    title: 'Add authentication layer',
-    body: 'This PR adds OAuth2 authentication with RBAC support.',
-    head: 'feature/add-auth',
-    base: 'main',
-  },
-});
-```
-
-### 3. githubGetDiff
-
-Fetch the diff (file changes) for a pull request.
-
-**Input:**
-```typescript
-{
-  owner: string;      // Repository owner
-  repo: string;       // Repository name
-  prNumber: number;   // Pull request number
-}
-```
-
-**Output:**
-```typescript
-{
-  success: boolean;
-  prNumber: number;
-  diff: string;           // Full diff content
-  filesChanged: number;   // Number of files changed
-  additions: number;      // Lines added
-  deletions: number;      // Lines deleted
-}
-```
-
-**Example:**
-```typescript
-import { githubGetDiff } from './tools/github-tools';
-
-const result = await githubGetDiff.execute({
-  inputData: {
-    owner: 'my-org',
-    repo: 'my-repo',
-    prNumber: 123,
-  },
-});
-
-console.log(`Diff for PR #${result.prNumber}:`);
-console.log(`Files changed: ${result.filesChanged}`);
-console.log(`+${result.additions} -${result.deletions}`);
-console.log(result.diff);
-```
-
-### 4. githubMergePR
-
-Merge a pull request using the specified merge method.
-
-**Input:**
-```typescript
-{
-  owner: string;                      // Repository owner
-  repo: string;                       // Repository name
-  prNumber: number;                   // Pull request number
-  mergeMethod: 'merge' | 'squash' | 'rebase';  // Merge method
-  commitTitle?: string;               // Optional: Merge commit title
-  commitMessage?: string;             // Optional: Merge commit message
-}
-```
-
-**Output:**
-```typescript
-{
-  success: boolean;
-  merged: boolean;
-  sha?: string;
-  message: string;
-}
-```
-
-**Example:**
-```typescript
-import { githubMergePR } from './tools/github-tools';
-
-const result = await githubMergePR.execute({
-  inputData: {
-    owner: 'my-org',
-    repo: 'my-repo',
-    prNumber: 123,
-    mergeMethod: 'squash',
-    commitTitle: 'Merge feature/add-auth',
-    commitMessage: 'Squashed commit for authentication feature',
-  },
-});
-```
-
-### 5. githubPostComment
-
-Post a comment on a pull request issue.
-
-**Input:**
-```typescript
-{
-  owner: string;      // Repository owner
-  repo: string;       // Repository name
-  prNumber: number;   // Pull request number
-  body: string;       // Comment body (supports GitHub-flavored markdown)
-}
-```
-
-**Output:**
-```typescript
-{
-  success: boolean;
-  commentId: number;
-  htmlUrl: string;
-  createdAt: string;
-}
-```
-
-**Example:**
-```typescript
-import { githubPostComment } from './tools/github-tools';
-
-const result = await githubPostComment.execute({
-  inputData: {
-    owner: 'my-org',
-    repo: 'my-repo',
-    prNumber: 123,
-    body: '## Review Feedback\n\nGreat work! Just a few minor suggestions:\n\n1. Add more tests\n2. Update documentation',
-  },
-});
-```
-
-## Usage in Mastra Workflows
-
-### Example: Code Review Workflow
-
-```typescript
-import { createWorkflow, createStep } from '@mastra/core/workflows';
-import { githubCreateBranch, githubCreatePR, githubGetDiff, githubMergePR, githubPostComment } from './tools/github-tools';
-
-// Step: Create branch
-const createBranchStep = createStep({
-  id: 'create-branch',
-  inputSchema: z.object({
-    featureId: z.string(),
-    repoUrl: z.string(),
-  }),
-  execute: async ({ inputData }) => {
-    const [owner, repo] = inputData.repoUrl.split('github.com/')[1].split('/');
-    const result = await githubCreateBranch.execute({
-      inputData: {
-        owner,
-        repo,
-        branchName: `feature/${inputData.featureId}`,
-        baseBranch: 'main',
-      },
-    });
-    return { branchName: result.branchName };
-  },
-});
-
-// Step: Create PR
-const createPRStep = createStep({
-  id: 'create-pr',
-  inputSchema: z.object({
-    owner: z.string(),
-    repo: z.string(),
-    branchName: z.string(),
-  }),
-  execute: async ({ inputData }) => {
-    const result = await githubCreatePR.execute({
-      inputData: {
-        owner: inputData.owner,
-        repo: inputData.repo,
-        title: `Feature: ${inputData.branchName}`,
-        body: 'Automated PR from Mission Command',
-        head: inputData.branchName,
-        base: 'main',
-      },
-    });
-    return { prNumber: result.prNumber };
-  },
-});
-
-// Compose workflow
-export const codeReviewWorkflow = createWorkflow({
-  id: 'code-review-workflow',
-})
-  .then(createBranchStep)
-  .then(createPRStep)
-  .commit();
-```
-
-### Example: Using with Agents
-
-```typescript
-import { Agent } from '@mastra/core/agent';
-import { githubTools } from './tools/github-tools';
-
-export const githubAgent = new Agent({
-  name: 'github-agent',
-  instructions: 'You help manage GitHub repositories and pull requests',
-  tools: {
-    ...githubTools,
-  },
-});
-
-// Agent can now use GitHub tools
-const response = await githubAgent.generate(
-  'Create a feature branch called "feature/test" from main in repo "my-org/my-repo"'
-);
-```
-
-## Testing
-
-Run the test suite:
+### 2. Start the Mastra Server
 
 ```bash
+// From mission-command root
+import { createServer } from './src/server/example';
+
+const server = await createServer({
+  databaseUrl: process.env.DATABASE_URL,
+  githubWebhookSecret: process.env.GITHUB_WEBHOOK_SECRET,
+
+  resumeWorkflow: async ({ runId, resumeData }) => {
+    // Resume workflow with approval decision
+    await mastra.getWorkflow('code-review').resume(runId, resumeData);
+  },
+});
+
+Bun.serve({
+  port: 4111,
+  fetch: server.app.fetch,
+});
+```
+
+The API will be available at http://localhost:4111
+
+### 3. Configure GitHub Webhook
+
+1. Go to your repository settings → Webhooks → Add webhook
+2. Payload URL: `https://your-domain.com/webhooks/github`
+3. Content type: `application/json`
+4. Secret: Use the same value as `GITHUB_WEBHOOK_SECRET`
+5. Events: Pull requests (opened, synchronized, closed, merged)
+
+## 📖 Documentation
+
+- **[Phase 4 Implementation](./PHASE_4_IMPLEMENTATION.md)** - Production hardening documentation
+- **[Code Review Workflow](./CODE_REVIEW_WORKFLOW.md)** - Workflow implementation guide
+- **[UI README](./ui/README.md)** - UI component documentation
+- **[GitHub Tools README](./src/tools/README.md)** - GitHub API tools documentation
+
+## 🎨 UI Views
+
+| View | Purpose | Route |
+|------|---------|-------|
+| **Mission Catalog** | Browse and create workflows | `/` |
+| **Mission Detail** | View/edit workflow definition | `/workflow/:id` |
+| **Mission Runs** | List workflow executions | `/runs` |
+| **Run Detail** | Monitor execution status | `/runs/:runId` |
+| **Approval Queue** | Review pending approvals | `/approvals` |
+
+## 🔌 GitHub Integration
+
+Mission Command Centre provides 5 GitHub agent tools:
+
+1. **githubCreateBranch** - Create feature branches
+2. **githubCreatePR** - Create pull requests
+3. **githubGetDiff** - Fetch PR diffs for review
+4. **githubMergePR** - Merge approved PRs
+5. **githubPostComment** - Post comments on PRs
+
+See [GitHub Tools README](./src/tools/README.md) for detailed usage.
+
+## 📊 API Endpoints
+
+### Webhook Endpoints
+
+| Method | Endpoint | Description | Rate Limited |
+|--------|----------|-------------|--------------|
+| POST | `/webhooks/github` | Receive GitHub webhooks | ✅ 100/hr |
+| GET | `/webhooks/github/health` | Health check | ❌ |
+| GET | `/webhooks/github/suspended` | List suspended runs | ❌ |
+| POST | `/webhooks/github/cleanup` | Manual cleanup | ❌ |
+
+### Mastra Server Endpoints
+
+Mastra Server provides auto-generated REST APIs for:
+
+- **Workflows**: `/workflows`, `/workflows/:id/runs`
+- **Agents**: `/agents`, `/agents/:id/generate`
+- **Storage**: `/threads`, `/messages`
+
+See [Mastra Documentation](https://mastra.ai/docs) for complete API reference.
+
+## 🧪 Testing
+
+### Unit Tests
+
+```bash
+# Run all tests
+pnpm test
+
+# Run specific test file
 pnpm test -- github-tools.test.ts
+pnpm test -- github-webhook.test.ts
 ```
 
-## Error Handling
+### Integration Tests (coming soon)
 
-All tools include comprehensive error handling:
-
-- **Missing GITHUB_TOKEN**: Throws error before making API calls
-- **API errors**: Returns detailed error messages with status codes
-- **Validation errors**: Zod schemas validate all inputs
-- **Network errors**: Caught and reported with context
-
-## Rate Limiting
-
-GitHub API has rate limits:
-- **Authenticated requests**: 5,000 requests/hour
-- **Unauthenticated requests**: 60 requests/hour
-
-The tools use authenticated requests (via GITHUB_TOKEN), giving you the higher limit.
-
-Monitor rate limit response headers:
-```
-X-RateLimit-Limit: 5000
-X-RateLimit-Remaining: 4999
-X-RateLimit-Reset: 1372700873
+```bash
+# Run integration tests
+pnpm test:integration
 ```
 
-## Security Considerations
+### E2E Tests (coming soon)
 
-1. **Token Storage**: Never commit GITHUB_TOKEN to version control
-   - Use `.env` files (add to `.gitignore`)
-   - Use secret management in production (e.g., AWS Secrets Manager, Vault)
+```bash
+# Run E2E tests with Playwright
+pnpm test:e2e
+```
 
-2. **Token Scoping**: Use minimal required permissions
-   - Create dedicated tokens for Mission Command
-   - Rotate tokens regularly
+## 🔒 Security Features
 
-3. **Logging**: Be careful not to log token values
-   - Tools sanitize tokens in error messages
-   - Check logs before committing
+- **Signature Verification** - HMAC-SHA256 webhook signature verification
+- **Rate Limiting** - 100 requests/hour per IP (configurable)
+- **TTL-based Expiration** - Suspended runs auto-expire after 7 days
+- **Input Validation** - All payloads validated with Zod schemas
+- **Environment-based Secrets** - No hardcoded credentials
 
-## Troubleshooting
+## 📈 Performance
 
-### "GITHUB_TOKEN environment variable is required"
-- Ensure `GITHUB_TOKEN` is set in your environment
-- Check `.env` file exists and is loaded
-- Verify token isn't expired
+- **Webhook Response Time**: < 100ms (with rate limiting)
+- **Database Queries**: Optimized with indexes
+- **Cleanup Overhead**: Minimal (background job)
+- **Memory Usage**: Constant (bounded by rate limit store)
 
-### "GitHub API error (404): Not Found"
-- Verify repository owner and name are correct
-- Check token has `repo` permissions
-- Ensure repository exists and is accessible
+## 🛠️ Development
 
-### "Failed to create branch: Branch already exists"
-- Branch name conflicts with existing branch
-- Use a unique branch name or delete existing branch first
+### Project Structure
 
-### "Failed to merge PR: Pull Request is not mergeable"
-- PR has merge conflicts
-- CI checks haven't passed
-- Branch is behind base branch
+```
+mission-command/
+├── src/
+│   ├── server/              # Webhook handlers and middleware
+│   │   ├── github-webhook.ts
+│   │   ├── suspended-runs-storage.ts
+│   │   ├── rate-limit.ts
+│   │   └── cleanup.ts
+│   ├── tools/               # GitHub agent tools
+│   │   ├── github-tools.ts
+│   │   └── github-tools.test.ts
+│   ├── workflows/           # Mastra workflow definitions
+│   │   ├── code-review-workflow.ts
+│   │   └── index.ts
+│   └── ui/                  # React UI components
+│       ├── CatalogView.tsx
+│       ├── MissionRunsView.tsx
+│       └── ApprovalQueueView.tsx
+├── ui/                      # Vite React app
+│   ├── src/
+│   │   ├── components/
+│   │   ├── App.tsx
+│   │   └── main.tsx
+│   ├── index.html
+│   └── vite.config.ts
+├── package.json
+├── tsconfig.json
+├── .env.example
+└── README.md
+```
 
-## License
+### Building
+
+```bash
+# Build from monorepo root
+pnpm build
+
+# Build mission-command package only
+pnpm build:package
+```
+
+### Type Checking
+
+```bash
+pnpm typecheck
+```
+
+### Linting
+
+```bash
+pnpm format
+```
+
+## 🐛 Troubleshooting
+
+### Database Connection Issues
+
+```
+Error: connect ECONNREFUSED 127.0.0.1:5432
+```
+
+**Solution**: Ensure PostgreSQL is running and `DATABASE_URL` is correct.
+
+### Table Doesn't Exist
+
+```
+Error: relation "mastra_suspended_runs" does not exist
+```
+
+**Solution**: Call `await storage.init()` to create tables.
+
+### GitHub Token Not Working
+
+```
+Error: GITHUB_TOKEN environment variable is required
+```
+
+**Solution**: Set `GITHUB_TOKEN` in `.env` file with `repo` permissions.
+
+## 📝 License
 
 MIT
 
-## Contributing
+## 🤝 Contributing
 
 1. Fork the repository
-2. Create a feature branch
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
 3. Make your changes
 4. Add tests
 5. Submit a pull request
 
-## Support
+## 📚 Resources
+
+- [Mastra Documentation](https://mastra.ai/docs)
+- [Mastra GitHub](https://github.com/mastra-ai/mastra)
+- [Workflow Overview](https://mastra.ai/docs/workflows/overview)
+- [Suspend & Resume](https://mastra.ai/docs/workflows/suspend-and-resume)
+
+## 🆘 Support
 
 For issues and questions:
 - GitHub Issues: [Mission Command Centre Issues](https://github.com/mastra-ai/mastra/issues)
 - Documentation: [Mastra Docs](https://mastra.ai/docs)
+
+---
+
+**Built with ❤️ using [Mastra](https://mastra.ai)**

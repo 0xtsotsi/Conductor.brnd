@@ -9,6 +9,7 @@ export {
   createGitHubWebhookRouter,
   registerSuspendedRun,
   setWorkflowResumeFunction,
+  setSuspendedRunsStorage,
   verifyGitHubSignature,
 } from './github-webhook';
 
@@ -39,3 +40,36 @@ export {
 export {
   createUsersAPI,
 } from './users-api';
+
+// Export suspended runs storage
+export {
+  SuspendedRunsStorage,
+  createSuspendedRunsStorage,
+} from './suspended-runs-storage';
+
+export type {
+  SuspendedRun,
+} from './suspended-runs-storage';
+
+// Export rate limiting
+export {
+  rateLimit,
+  createGitHubWebhookRateLimit,
+  startRateLimitCleanup,
+} from './rate-limit';
+
+export type {
+  RateLimitConfig,
+} from './rate-limit';
+
+// Export cleanup job
+export {
+  CleanupJob,
+  createCleanupJob,
+  createManualCleanupHandler,
+} from './cleanup';
+
+export type {
+  CleanupJobConfig,
+  CleanupResult,
+} from './cleanup';

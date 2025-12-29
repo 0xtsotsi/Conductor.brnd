@@ -1,93 +1,133 @@
-# Mission Command Centre - Docker Compose
-
 version: '3.8'
 
 services:
-  # Mission Command UI
-  mission-command-ui:
-    build:
-      context: ..
-      dockerfile: mission-command/Dockerfile
-      target: ui-production
-    container_name: mission-command-ui
-    ports:
-      - "3000:3000"
-    environment:
-      - VITE_MASTRA_API_URL=http://mastra-server:4111
-      - NODE_ENV=production
-    depends_on:
-      - mastra-server
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: mission-command-db
     restart: unless-stopped
+    environment:
+      POSTGRES_USER: mission_command
+      POSTGRES_PASSWORD: mission_command_password
+      POSTGRES_DB: mission_command_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mission_command"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
-      - mission-command
+      - mission-command-network
 
-  # Mastra Server
-  mastra-server:
+  # Mission Command Server
+  server:
     build:
       context: ..
       dockerfile: mission-command/Dockerfile
-      target: server
-    container_name: mastra-server
+    container_name: mission-command-server
+    restart: unless-stopped
     ports:
       - "4111:4111"
+      - "3000:3000"
     environment:
-      - NODE_ENV=production
-      - DATABASE_URL=file:/data/mission-command.db
-      - LIBSQL_URL=file:/data/mission-command.db
-      - JWT_AUTH_SECRET=${JWT_AUTH_SECRET}
-      - FRONTEND_URL=http://localhost:3000
-      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID}
-      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET}
-      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
-      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
-      - DEFAULT_ROLE=${DEFAULT_ROLE:-viewer}
-    volumes:
-      - mission-command-data:/data
-    restart: unless-stopped
+      # Database
+      DATABASE_URL: postgresql://mission_command:mission_command_password@postgres:5432/mission_command_db
+
+      # GitHub
+      GITHUB_TOKEN: ${GITHUB_TOKEN}
+      GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET}
+
+      # Server
+      NODE_ENV: production
+      PORT: 4111
+
+      # JWT & Auth
+      JWT_SECRET: ${JWT_SECRET}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET}
+      GITHUB_CALLBACK_URL: http://localhost:4111/auth/github/callback
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      GOOGLE_CALLBACK_URL: http://localhost:4111/auth/google/callback
+      ADMIN_EMAILS: ${ADMIN_EMAILS}
+      ADMIN_DOMAINS: ${ADMIN_DOMAINS}
+
+      # Cleanup
+      CLEANUP_INTERVAL_MS: 3600000
+      RATE_LIMIT_CLEANUP_INTERVAL_MS: 60000
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4111/webhooks/github/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 40s
+      retries: 3
     networks:
-      - mission-command
+      - mission-command-network
+    volumes:
+      - server_logs:/app/logs
 
-  # Optional: PostgreSQL for production
-  # Uncomment to use PostgreSQL instead of LibSQL
-  # postgres:
-  #   image: postgres:15-alpine
-  #   container_name: mission-command-db
-  #   environment:
-  #     - POSTGRES_USER=${POSTGRES_USER:-mission_command}
-  #     - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-  #     - POSTGRES_DB=${POSTGRES_DB:-mission_command}
-  #   volumes:
-  #     - postgres-data:/var/lib/postgresql/data
-  #   ports:
-  #     - "5432:5432"
-  #   restart: unless-stopped
-  #   networks:
-  #     - mission-command
+  # Nginx Reverse Proxy (optional)
+  nginx:
+    image: nginx:alpine
+    container_name: mission-command-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - server
+    networks:
+      - mission-command-network
 
-  # Optional: Nginx reverse proxy
-  # Uncomment for production deployment
-  # nginx:
-  #   image: nginx:alpine
-  #   container_name: mission-command-nginx
-  #   ports:
-  #     - "80:80"
-  #     - "443:443"
-  #   volumes:
-  #     - ./nginx.conf:/etc/nginx/nginx.conf:ro
-  #     - ./ssl:/etc/nginx/ssl:ro
-  #   depends_on:
-  #     - mission-command-ui
-  #     - mastra-server
-  #   restart: unless-stopped
-  #   networks:
-  #     - mission-command
+  # Prometheus Monitoring (optional)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: mission-command-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    networks:
+      - mission-command-network
+
+  # Grafana Dashboards (optional)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: mission-command-grafana
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+    networks:
+      - mission-command-network
 
 volumes:
-  mission-command-data:
+  postgres_data:
     driver: local
-  # postgres-data:
-  #   driver: local
+  server_logs:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
 
 networks:
-  mission-command:
+  mission-command-network:
     driver: bridge
