@@ -48,46 +48,38 @@ export function ApprovalQueueView({ currentUserRole }: ApprovalQueueViewProps) {
   const canApprove = currentUserRole === 'admin' || currentUserRole === 'operator';
 
   // Fetch suspended workflow runs
-  // Note: This API endpoint needs to be implemented in Mastra Server
-  const { data: suspendedRuns = [], isLoading } = useQuery({
-    queryKey: ['suspended-runs'],
+  const { data: suspendedRunsData, isLoading } = useQuery({
+    queryKey: ['approvals'],
     queryFn: async () => {
-      // TODO: Implement this API endpoint in Mastra Server
-      // For now, return empty array
-      console.warn('getSuspendedRuns API not yet implemented in Mastra Server');
-      return [];
+      const response = await client.get('/api/approvals?page=0&perPage=50');
+      return response;
     },
   });
+  const suspendedRuns = suspendedRunsData?.runs || [];
 
-  // Mutation to resume a workflow with approval decision
+  // Mutation to approve a workflow run
   const approveMutation = useMutation({
     mutationFn: async ({ runId, approved, feedbackText }: {
     runId: string;
     approved: boolean;
     feedbackText?: string
   }) => {
-      // TODO: Implement resume API endpoint
-      // POST /api/workflows/:workflowId/runs/:runId/resume
-      const response = await fetch(`/api/workflows/runs/${runId}/resume`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          resumeData: {
-            approved,
-            feedback: feedbackText,
-          },
-        }),
+      const endpoint = approved
+        ? `/api/approvals/${runId}/approve`
+        : `/api/approvals/${runId}/decline`;
+      
+      const response = await client.post(endpoint, {
+        resumeData: {
+          approved,
+          feedback: feedbackText,
+        },
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to resume workflow');
-      }
-
-      return response.json();
+      return response;
     },
     onSuccess: () => {
       // Refresh the approval queue
-      queryClient.invalidateQueries({ queryKey: ['suspended-runs'] });
+      queryClient.invalidateQueries({ queryKey: ['approvals'] });
     },
   });
 

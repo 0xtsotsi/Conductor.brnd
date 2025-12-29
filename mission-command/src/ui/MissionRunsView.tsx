@@ -59,33 +59,26 @@ export function MissionRunsView({ currentUserRole }: MissionRunsViewProps) {
   // Check permissions
   const canCancel = currentUserRole === 'admin' || currentUserRole === 'operator';
 
-  // Fetch workflow runs
-  const { data: runs = [], isLoading, refetch } = useQuery({
-    queryKey: ['workflow-runs', statusFilter],
+  // Fetch active workflow runs
+  const { data: activeRunsData, isLoading, refetch } = useQuery({
+    queryKey: ['missions', 'active'],
     queryFn: async () => {
-      // TODO: Implement getWorkflowRuns API
-      console.warn('getWorkflowRuns API not yet implemented in Mastra Server');
-      return [];
+      const response = await client.get('/api/missions/active?page=0&perPage=50');
+      return response;
     },
     // Enable polling for real-time updates
-    refetchInterval: selectedRun?.status === 'running' ? 2000 : false,
+    refetchInterval: 2000,
   });
+  const runs = activeRunsData?.runs || [];
 
   // Cancel workflow mutation
   const cancelMutation = useMutation({
     mutationFn: async (runId: string) => {
-      const response = await fetch(`/api/workflows/runs/${runId}/cancel`, {
-        method: 'POST',
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to cancel workflow run');
-      }
-
-      return response.json();
+      const response = await client.post(`/api/workflows/runs/${runId}/cancel`, {});
+      return response;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['workflow-runs'] });
+      queryClient.invalidateQueries({ queryKey: ['missions', 'active'] });
     },
   });
 
