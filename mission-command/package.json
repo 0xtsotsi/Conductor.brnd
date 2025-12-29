@@ -45,6 +45,7 @@
   "license": "MIT",
   "dependencies": {
     "@mastra/core": "workspace:*",
+    "@mastra/auth": "workspace:*",
     "zod": "^3.22.4"
   },
   "devDependencies": {
