@@ -20,6 +20,10 @@
     "./server": {
       "types": "./src/server/index.ts",
       "import": "./src/server/index.ts"
+    },
+    "./ui": {
+      "types": "./src/ui/index.ts",
+      "import": "./src/ui/index.ts"
     }
   },
   "scripts": {
@@ -44,8 +48,12 @@
   "author": "Mission Command Centre",
   "license": "MIT",
   "dependencies": {
-    "@mastra/core": "workspace:*",
     "@mastra/auth": "workspace:*",
+    "@mastra/core": "workspace:*",
+    "@mastra/playground-ui": "workspace:*",
+    "@mastra/react": "workspace:*",
+    "@tanstack/react-query": "^5.62.0",
+    "react": "^19.0.0",
     "zod": "^3.22.4"
   },
   "devDependencies": {
