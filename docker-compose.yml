@@ -1,0 +1,94 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: mastra-postgres
+    environment:
+      POSTGRES_DB: mastra
+      POSTGRES_USER: mastra
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mastra"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - mastra-network
+
+  # Redis (for caching and sessions)
+  redis:
+    image: redis:7-alpine
+    container_name: mastra-redis
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - mastra-network
+
+  # Mission Command UI
+  mission-command-ui:
+    build:
+      context: ./mission-command/ui
+      dockerfile: Dockerfile
+    container_name: mission-command-ui
+    ports:
+      - "3000:80"
+    environment:
+      - VITE_MASTRA_API_URL=http://mastra-server:4111
+    depends_on:
+      mastra-server:
+        condition: service_healthy
+    networks:
+      - mastra-network
+    restart: unless-stopped
+
+  # Mastra Server (placeholder - adjust based on actual setup)
+  mastra-server:
+    image: mastra-server:latest
+    container_name: mastra-server
+    ports:
+      - "4111:4111"
+    environment:
+      - DATABASE_URL=postgresql://mastra:${POSTGRES_PASSWORD:-changeme}@postgres:5432/mastra
+      - REDIS_URL=redis://redis:6379
+      - JWT_AUTH_SECRET=${JWT_AUTH_SECRET:-changeme}
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID}
+      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET}
+      - GITHUB_WEBHOOK_SECRET=${GITHUB_WEBHOOK_SECRET}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - mastra-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4111/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    volumes:
+      - ./logs:/app/logs
+
+networks:
+  mastra-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:

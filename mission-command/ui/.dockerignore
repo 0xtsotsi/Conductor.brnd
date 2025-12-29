@@ -1,0 +1,17 @@
+node_modules
+npm-debug.log
+.env
+.env.local
+.env.production
+dist
+.git
+.gitignore
+README.md
+.eslintrc.cjs
+.prettierrc
+.vscode
+.idea
+*.log
+.DS_Store
+coverage
+.vitest
