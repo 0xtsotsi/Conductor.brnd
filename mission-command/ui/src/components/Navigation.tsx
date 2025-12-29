@@ -1,11 +1,9 @@
 import { Link, useLocation } from 'react-router-dom';
 import { MissionCommandRole } from '@mastra/auth';
+import { useAuth } from '../providers/AuthProvider';
 
-type NavigationProps = {
-  currentUserRole: MissionCommandRole;
-};
-
-export function Navigation({ currentUserRole }: NavigationProps) {
+export function Navigation() {
+  const { user, role, logout } = useAuth();
   const location = useLocation();
 
   const navItems = [
@@ -14,9 +12,9 @@ export function Navigation({ currentUserRole }: NavigationProps) {
     { path: '/approvals', label: 'Approvals', accessibleTo: ['admin', 'operator'] as MissionCommandRole[] },
   ];
 
-  const accessibleNavItems = navItems.filter(item =>
-    item.accessibleTo.includes(currentUserRole)
-  );
+  const accessibleNavItems = role
+    ? navItems.filter(item => item.accessibleTo.includes(role))
+    : [];
 
   return (
     <nav className="bg-mastra-bg-2 border-b border-mastra-el-border">
@@ -46,11 +44,30 @@ export function Navigation({ currentUserRole }: NavigationProps) {
             ))}
           </div>
 
-          {/* User Role Badge */}
-          <div className="flex items-center">
-            <span className="px-3 py-1 text-xs font-medium rounded-full bg-mastra-el-3 text-mastra-el-text border border-mastra-el-border">
-              {currentUserRole}
-            </span>
+          {/* User Info and Logout */}
+          <div className="flex items-center gap-3">
+            {/* User Role Badge */}
+            {role && (
+              <span className="px-3 py-1 text-xs font-medium rounded-full bg-mastra-el-3 text-mastra-el-text border border-mastra-el-border">
+                {role}
+              </span>
+            )}
+
+            {/* User Email */}
+            {user?.email && (
+              <span className="text-sm text-mastra-el-text-muted hidden sm:inline-block">
+                {user.email}
+              </span>
+            )}
+
+            {/* Logout Button */}
+            <button
+              onClick={logout}
+              className="px-3 py-1 text-sm font-medium rounded-md bg-mastra-el-3 text-mastra-el-text hover:bg-mastra-el-3/80 transition-colors"
+              title="Logout"
+            >
+              Logout
+            </button>
           </div>
         </div>
       </div>
