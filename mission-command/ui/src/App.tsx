@@ -1,7 +1,11 @@
-import { BrowserRouter, Routes, Route, useNavigate, useLocation, useParams } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useNavigate, useLocation, useParams, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { CatalogView, WorkflowDetailView, CreateWorkflowView, ApprovalQueueView, MissionRunsView } from '@mission-command/github-tools/ui';
 import { MissionCommandRole } from '@mastra/auth';
+import { MastraClientProvider } from '@mastra/react';
+import { AuthProvider, useAuth } from './providers/AuthProvider';
+import { ProtectedRoute } from './components/ProtectedRoute';
+import { LoginPage } from './pages/LoginPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -15,6 +19,7 @@ const queryClient = new QueryClient({
 function Navigation() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user, logout, role } = useAuth();
 
   const navItems = [
     { path: '/', label: 'Catalog' },
@@ -44,8 +49,17 @@ function Navigation() {
           </div>
           <div className="flex items-center space-x-4">
             <span className="px-3 py-1 rounded-full text-xs font-medium bg-mastra-bg-7 text-mastra-el-6">
-              Admin
+              {role}
             </span>
+            {user && (
+              <span className="text-sm text-mastra-el-4">{user.email}</span>
+            )}
+            <button
+              onClick={logout}
+              className="px-3 py-1 text-sm text-mastra-el-3 hover:text-mastra-el-5 border border-mastra-border-1 rounded hover:bg-mastra-bg-3 transition-colors"
+            >
+              Logout
+            </button>
           </div>
         </div>
       </div>
@@ -56,6 +70,7 @@ function Navigation() {
 function WorkflowDetailWrapper() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { role } = useAuth();
 
   if (!id) {
     return <div>Workflow not found</div>;
@@ -67,13 +82,13 @@ function WorkflowDetailWrapper() {
       onEdit={() => console.log('Edit workflow')}
       onDelete={() => console.log('Delete workflow')}
       onBack={() => navigate('/')}
-      currentUserRole={'admin'}
+      currentUserRole={role}
     />
   );
 }
 
-function App() {
-  const currentUserRole: MissionCommandRole = 'admin';
+function AppRoutes() {
+  const { role } = useAuth();
 
   const handleWorkflowSelect = (workflowId: string) => {
     window.location.href = `/workflow/${workflowId}`;
@@ -84,30 +99,79 @@ function App() {
   };
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <div className="min-h-screen bg-mastra-bg-1">
-          <Navigation />
-          <main>
-            <Routes>
-              <Route
-                path="/"
-                element={
+    <BrowserRouter>
+      <div className="min-h-screen bg-mastra-bg-1">
+        <Navigation />
+        <main>
+          <Routes>
+            {/* Public route */}
+            <Route path="/login" element={<LoginPage />} />
+
+            {/* Protected routes */}
+            <Route
+              path="/"
+              element={
+                <ProtectedRoute>
                   <CatalogView
                     onWorkflowSelect={handleWorkflowSelect}
                     onWorkflowCreate={handleWorkflowCreate}
-                    currentUserRole={currentUserRole}
+                    currentUserRole={role}
                   />
-                }
-              />
-              <Route path="/workflow/:id" element={<WorkflowDetailWrapper />} />
-              <Route path="/workflow/new" element={<CreateWorkflowView />} />
-              <Route path="/approvals" element={<ApprovalQueueView currentUserRole={currentUserRole} />} />
-              <Route path="/runs" element={<MissionRunsView currentUserRole={currentUserRole} />} />
-            </Routes>
-          </main>
-        </div>
-      </BrowserRouter>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/workflow/:id"
+              element={
+                <ProtectedRoute>
+                  <WorkflowDetailWrapper />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/workflow/new"
+              element={
+                <ProtectedRoute requiredRole="admin">
+                  <CreateWorkflowView />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/approvals"
+              element={
+                <ProtectedRoute requiredRole="operator">
+                  <ApprovalQueueView currentUserRole={role} />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/runs"
+              element={
+                <ProtectedRoute>
+                  <MissionRunsView currentUserRole={role} />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Fallback */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </main>
+      </div>
+    </BrowserRouter>
+  );
+}
+
+function App() {
+  const apiUrl = import.meta.env.VITE_MASTRA_API_URL || 'http://localhost:4111';
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      <MastraClientProvider baseUrl={apiUrl}>
+        <AuthProvider>
+          <AppRoutes />
+        </AuthProvider>
+      </MastraClientProvider>
     </QueryClientProvider>
   );
 }
