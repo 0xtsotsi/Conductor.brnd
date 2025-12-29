@@ -1,0 +1,122 @@
+{
+  "name": "@mastra/server",
+  "version": "1.0.0-beta.18",
+  "description": "",
+  "type": "module",
+  "files": [
+    "dist",
+    "CHANGELOG.md"
+  ],
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./handlers": {
+      "import": {
+        "types": "./dist/server/handlers.d.ts",
+        "default": "./dist/server/handlers.js"
+      },
+      "require": {
+        "types": "./dist/server/handlers.d.ts",
+        "default": "./dist/server/handlers.cjs"
+      }
+    },
+    "./handlers/*": {
+      "import": {
+        "types": "./dist/server/handlers/*.d.ts",
+        "default": "./dist/server/handlers/*.js"
+      },
+      "require": {
+        "types": "./dist/server/handlers/*.d.ts",
+        "default": "./dist/server/handlers/*.cjs"
+      }
+    },
+    "./server-adapter": {
+      "import": {
+        "types": "./dist/server/server-adapter/index.d.ts",
+        "default": "./dist/server/server-adapter/index.js"
+      },
+      "require": {
+        "types": "./dist/server/server-adapter/index.d.ts",
+        "default": "./dist/server/server-adapter/index.cjs"
+      }
+    },
+    "./a2a/store": {
+      "import": {
+        "types": "./dist/server/a2a/store.d.ts",
+        "default": "./dist/server/a2a/store.js"
+      },
+      "require": {
+        "types": "./dist/server/a2a/store.d.ts",
+        "default": "./dist/server/a2a/store.cjs"
+      }
+    },
+    "./auth": {
+      "import": {
+        "types": "./dist/server/auth/index.d.ts",
+        "default": "./dist/server/auth/index.js"
+      },
+      "require": {
+        "types": "./dist/server/auth/index.d.ts",
+        "default": "./dist/server/auth/index.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "tsup --silent --config tsup.config.ts",
+    "build:watch": "pnpm build --watch",
+    "pull:openapispec": "node src/server/openapi.script.js",
+    "test": "vitest run",
+    "lint": "eslint ."
+  },
+  "keywords": [],
+  "author": "",
+  "license": "Apache-2.0",
+  "peerDependencies": {
+    "@mastra/core": ">=1.0.0-0 <2.0.0-0",
+    "zod": "^3.25.0 || ^4.0.0"
+  },
+  "devDependencies": {
+    "@ai-sdk/openai": "^1.3.24",
+    "@ai-sdk/openai-v5": "npm:@ai-sdk/openai@2.0.42",
+    "@internal/lint": "workspace:*",
+    "@internal/storage-test-utils": "workspace:*",
+    "@internal/types-builder": "workspace:*",
+    "@mastra/agent-builder": "workspace:*",
+    "@mastra/core": "workspace:*",
+    "@types/node": "22.13.17",
+    "@vitest/coverage-v8": "catalog:",
+    "@vitest/ui": "catalog:",
+    "eslint": "^9.37.0",
+    "superjson": "^2.2.2",
+    "tsup": "^8.5.0",
+    "typescript": "^5.8.3",
+    "vitest": "catalog:",
+    "zod": "^3.25.76"
+  },
+  "homepage": "https://mastra.ai",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mastra-ai/mastra.git",
+    "directory": "packages/server"
+  },
+  "bugs": {
+    "url": "https://github.com/mastra-ai/mastra/issues"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "dependencies": {
+    "hono": "^4.10.5"
+  }
+}

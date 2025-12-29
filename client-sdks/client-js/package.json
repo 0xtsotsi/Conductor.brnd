@@ -1,0 +1,71 @@
+{
+  "name": "@mastra/client-js",
+  "version": "1.0.0-beta.18",
+  "description": "The official TypeScript library for the Mastra Client API",
+  "author": "",
+  "type": "module",
+  "types": "dist/index.d.ts",
+  "main": "dist/index.js",
+  "files": [
+    "dist",
+    "CHANGELOG.md"
+  ],
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mastra-ai/mastra.git",
+    "directory": "client-sdks/client-js"
+  },
+  "bugs": {
+    "url": "https://github.com/mastra-ai/mastra/issues"
+  },
+  "homepage": "https://mastra.ai",
+  "license": "Apache-2.0",
+  "scripts": {
+    "lint": "eslint .",
+    "build": "tsup --config tsup.config.ts",
+    "dev": "pnpm build --watch",
+    "test": "vitest",
+    "test:unit": "vitest run"
+  },
+  "dependencies": {
+    "@lukeed/uuid": "^2.0.1",
+    "@mastra/core": "workspace:*",
+    "@mastra/schema-compat": "workspace:*",
+    "json-schema": "^0.4.0"
+  },
+  "peerDependencies": {
+    "zod": "^3.25.0 || ^4.0.0"
+  },
+  "devDependencies": {
+    "@internal/ai-sdk-v4": "workspace:*",
+    "@internal/ai-sdk-v5": "workspace:*",
+    "@ai-sdk/ui-utils": "^1.2.11",
+    "@internal/lint": "workspace:*",
+    "@internal/types-builder": "workspace:*",
+    "@types/json-schema": "^7.0.15",
+    "@types/node": "22.13.17",
+    "@vitest/coverage-v8": "catalog:",
+    "@vitest/ui": "catalog:",
+    "eslint": "^9.37.0",
+    "tsup": "^8.5.0",
+    "typescript": "^5.8.3",
+    "vitest": "catalog:",
+    "zod": "^3.25.76"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  }
+}

@@ -4,5 +4,15 @@
  * Webhook handlers and server utilities for Mission Command Centre.
  */
 
-export { createGitHubWebhookHandler } from './github-webhook-handler';
-export { registerSuspendedWorkflow, unregisterSuspendedWorkflow, findSuspendedWorkflow } from './github-webhook-handler';
+// Export complete webhook handler with signature verification
+export {
+  createGitHubWebhookRouter,
+  registerSuspendedRun,
+  setWorkflowResumeFunction,
+  verifyGitHubSignature,
+} from './github-webhook';
+
+export type {
+  GitHubWebhookPayload,
+  WorkflowResumeFunction,
+} from './github-webhook';

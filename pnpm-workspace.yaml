@@ -1,0 +1,24 @@
+packages:
+  - packages/_vendored/*
+  - packages/*
+  - deployers/*
+  - stores/*
+  - voice/*
+  - workflows/*
+  - server-adapters/*
+  - pubsub/*
+  - client-sdks/*
+  - integrations/*
+  - examples/dane
+  - auth/*
+  - observability/*
+  - explorations/longmemeval
+  - explorations/agent-builder-gh-repro
+
+catalog:
+  '@vitest/coverage-v8': 4.0.12
+  '@vitest/ui': 4.0.12
+  vitest: 4.0.12
+
+patchedDependencies:
+  '@changesets/get-dependents-graph': patches/@changesets__get-dependents-graph.patch
