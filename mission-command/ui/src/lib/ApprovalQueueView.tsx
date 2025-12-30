@@ -51,8 +51,11 @@ export function ApprovalQueueView({ currentUserRole }: ApprovalQueueViewProps) {
   const { data: suspendedRunsData, isLoading } = useQuery({
     queryKey: ['approvals'],
     queryFn: async () => {
-      const response = await client.get('/api/approvals?page=0&perPage=50');
-      return response;
+      const response = await fetch('/api/approvals?page=0&perPage=50');
+      if (!response.ok) {
+        throw new Error('Failed to fetch approvals');
+      }
+      return response.json();
     },
   });
   const suspendedRuns = suspendedRunsData?.runs || [];
@@ -67,15 +70,25 @@ export function ApprovalQueueView({ currentUserRole }: ApprovalQueueViewProps) {
       const endpoint = approved
         ? `/api/approvals/${runId}/approve`
         : `/api/approvals/${runId}/decline`;
-      
-      const response = await client.post(endpoint, {
-        resumeData: {
-          approved,
-          feedback: feedbackText,
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
         },
+        body: JSON.stringify({
+          resumeData: {
+            approved,
+            feedback: feedbackText,
+          },
+        }),
       });
 
-      return response;
+      if (!response.ok) {
+        throw new Error('Failed to process approval');
+      }
+
+      return response.json();
     },
     onSuccess: () => {
       // Refresh the approval queue
@@ -152,7 +165,7 @@ export function ApprovalQueueView({ currentUserRole }: ApprovalQueueViewProps) {
       ) : (
         /* Approval List */
         <div className="space-y-4">
-          {suspendedRuns.map((run) => (
+          {suspendedRuns.map((run: SuspendedRun) => (
             <ApprovalCard
               key={run.runId}
               run={run}

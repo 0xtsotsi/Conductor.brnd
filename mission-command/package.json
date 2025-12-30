@@ -59,14 +59,18 @@
   "author": "Mission Command Centre",
   "license": "MIT",
   "dependencies": {
+    "@hono/node-server": "^1.19.6",
+    "@hono/oauth-providers": "^0.8.5",
+    "@libsql/client": "^0.15.15",
     "@mastra/auth": "workspace:*",
     "@mastra/core": "workspace:*",
     "@mastra/playground-ui": "workspace:*",
     "@mastra/react": "workspace:*",
     "@tanstack/react-query": "^5.62.0",
-    "hono": "^4.0.0",
+    "hono": "^4.10.6",
+    "jose": "^6.1.2",
     "react": "^19.0.0",
-    "zod": "^3.22.4"
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@playwright/test": "^1.57.0",

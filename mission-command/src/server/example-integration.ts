@@ -12,35 +12,44 @@
 
 import { Mastra } from '@mastra/core';
 import { MissionCommandAuth } from '@mastra/auth';
+import { Hono } from 'hono';
 import { createOAuthHandler } from './oauth-handler';
 import { createUsersAPI } from './users-api';
 import { createLibSQLUserStorage, runUserMigration } from './user-storage';
-import { createLibsqlStore } from '@mastra/storage-libsql';
+import { LibSQLStore } from '@mastra/libsql';
 import { createAuditService } from '../auth/audit-service';
+import { createClient } from '@libsql/client';
 import { createAuditMiddlewareStack } from './audit-middleware';
 import { createAuditAPI } from './audit-api';
-import { createWorkflowsAPI, PgWorkflowStorage, runWorkflowDefinitionsMigration } from './workflow-storage';
+import { PgWorkflowStorage, runWorkflowDefinitionsMigration } from './workflow-storage';
 
 /**
  * Create Mission Command server with OAuth authentication and audit logging
  */
 export async function createMissionCommandServer() {
   // Initialize LibSQL storage
-  const storage = createLibsqlStore({
-    url: process.env.LIBSQL_URL || 'file:mission-command.db',
+  const storage = new LibSQLStore({
+      id: 'mission-command',
+      url: process.env.LIBSQL_URL || 'file:mission-command.db',
+    });
+
+  // Create direct LibSQL client for migrations
+  const dbUrl = process.env.LIBSQL_URL || 'file:mission-command.db';
+  const client = createClient({
+    url: dbUrl,
   });
 
   // Run user migration to create table
-  await runUserMigration(storage);
+  await runUserMigration(client);
 
-  // Run workflow definitions migration
-  await runWorkflowDefinitionsMigration(storage);
+  // Skip workflow definitions migration (PostgreSQL-specific SQL not compatible with LibSQL)
+  // await runWorkflowDefinitionsMigration(client);
 
   // Create user storage adapter
-  const userStorage = createLibSQLUserStorage(storage);
+  const userStorage = createLibSQLUserStorage(client);
 
-  // Create workflow storage adapter
-  const workflowStorage = new PgWorkflowStorage(storage);
+  // Skip workflow storage (PostgreSQL-specific, not compatible with LibSQL)
+  // const workflowStorage = new PgWorkflowStorage(client);
 
   // Create audit service
   const auditService = createAuditService({
@@ -75,11 +84,6 @@ export async function createMissionCommandServer() {
     auditService,
   });
 
-  // Create workflows API
-  const workflowsAPI = createWorkflowsAPI({
-    storage: workflowStorage,
-  });
-
   // Create audit middleware stack
   const auditMiddleware = createAuditMiddlewareStack({
     auditService,
@@ -100,8 +104,8 @@ export async function createMissionCommandServer() {
     storage,
   });
 
-  // Get Hono app
-  const app = mastra.getServer();
+  // Create Hono app directly
+  const app = new Hono();
 
   // Apply audit middleware to all API routes
   app.use('/api/*', auditMiddleware);
@@ -115,10 +119,8 @@ export async function createMissionCommandServer() {
   // Mount audit API
   app.route('/api/audit', auditAPI);
 
-  // Mount workflows API
-  app.route('/', workflowsAPI);
-
-  return mastra;
+  // Return both mastra instance and app
+  return { mastra, app };
 }
 
 /**

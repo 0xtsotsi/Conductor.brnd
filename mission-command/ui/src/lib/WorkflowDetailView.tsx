@@ -8,7 +8,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useMastraClient } from '@mastra/react';
 import { MissionCommandRole } from '@mastra/auth';
-import { GetWorkflowResponse } from '@mastra/client-js';
 
 export type WorkflowDetailViewProps = {
   workflowId: string;
@@ -36,7 +35,13 @@ export function WorkflowDetailView({
   // Fetch workflow details from Mastra API
   const { data: workflow, isLoading } = useQuery({
     queryKey: ['workflow', workflowId],
-    queryFn: () => client.getWorkflow(workflowId),
+    queryFn: async () => {
+      const response = await fetch(`/api/workflows/definitions/${workflowId}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch workflow');
+      }
+      return response.json();
+    },
   });
 
   // Check permissions based on role

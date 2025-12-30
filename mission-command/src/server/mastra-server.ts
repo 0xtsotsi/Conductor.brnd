@@ -20,7 +20,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { Mastra } from '@mastra/core';
-import { requireRole } from '@mastra/auth/rbac-middleware';
+import { requireRole } from '@mastra/auth';
 import { requireAuth, type MissionCommandUser } from './jwt-middleware';
 import type { WorkflowsStorage } from '@mastra/core/storage';
 import { AuditService } from '../auth/audit-service';

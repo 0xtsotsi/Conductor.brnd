@@ -9,11 +9,13 @@ Mission Command Centre is a workflow orchestration UI built on top of **Mastra**
 ### Key Features
 
 - 🎨 **Modern React UI** - Built with Vite, TypeScript, and Tailwind CSS
+- 🔐 **OAuth2 Authentication** - GitHub and Google OAuth with JWT-based sessions
+- 👥 **Role-Based Access Control (RBAC)** - Admin, Operator, and Viewer roles
 - 🤖 **AI Agent Orchestration** - Native Mastra agents run within workflows
 - 🔀 **Human-in-the-Loop** - Suspend/resume workflows for human approval
 - 🔗 **GitHub Integration** - Automated branch creation, PRs, and merges
 - 📊 **Real-Time Monitoring** - Live workflow execution tracking
-- 🔒 **Production-Ready** - PostgreSQL storage, rate limiting, auto-cleanup
+- 🔒 **Production-Ready** - PostgreSQL storage, rate limiting, audit logging
 
 ## 🏗️ Architecture
 
@@ -22,24 +24,79 @@ Mission Command Centre is a workflow orchestration UI built on top of **Mastra**
 │                    Mission Command UI (React)                    │
 │                    Vite + TypeScript + Tailwind                  │
 │                    Port: 3000                                    │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │              AuthProvider + RBAC                        │    │
+│  │         (OAuth2 + JWT + Role Checks)                    │    │
+│  └─────────────────────────────────────────────────────────┘    │
 └────────────────────────────┬────────────────────────────────────┘
-                             │ REST API
+                             │ REST API (JWT Auth)
                              │ Port: 4111
 ┌────────────────────────────▼────────────────────────────────────┐
 │                         Mastra Server                             │
 │  ┌─────────────┐  ┌──────────────┐  ┌─────────────┐            │
-│  │ Workflow    │  │ Agent        │  │ Storage     │            │
-│  │ Executor    │  │ Runtime      │  │ Layer       │            │
+│  │ Workflow    │  │ Agent        │  │ OAuth/Auth  │            │
+│  │ Executor    │  │ Runtime      │  │ Middleware  │            │
+│  └─────────────┘  └──────────────┘  └─────────────┘            │
+│  ┌─────────────┐  ┌──────────────┐  ┌─────────────┐            │
+│  │ RBAC        │  │ Audit        │  │ Rate Limit  │            │
+│  │ Middleware  │  │ Logging      │  │ Protection  │            │
 │  └─────────────┘  └──────────────┘  └─────────────┘            │
 └────────────────────────────┬─────────────────────────────────────┘
                              │
 ┌────────────────────────────▼─────────────────────────────────────┐
 │                    Storage Layer                                  │
-│  ┌─────────────┐  ┌──────────────┐                               │
-│  │ LibSQL      │  │ PostgreSQL   │  (dev: LibSQL, prod: Supabase) │
-│  │ (dev)       │  │ (prod)       │                               │
-│  └─────────────┘  └──────────────┘                               │
+│  ┌──────────────────────────────────────────────────┐           │
+│  │  PostgreSQL Database                             │           │
+│  │  ├── users (OAuth accounts + RBAC)               │           │
+│  │  ├── sessions (JWT session management)           │           │
+│  │  ├── audit_log (activity tracking)               │           │
+│  │  └── suspended_runs (workflow state)             │           │
+│  └──────────────────────────────────────────────────┘           │
 └───────────────────────────────────────────────────────────────────┘
+```
+
+### Authentication Flow
+
+```
+┌──────────┐         ┌──────────┐         ┌──────────┐
+│  Browser │         │   API    │         │  OAuth   │
+└────┬─────┘         └────┬─────┘         └────┬─────┘
+     │                    │                    │
+     │ 1. Click Login     │                    │
+     ├───────────────────>│                    │
+     │                    │ 2. Redirect to     │
+     │                    │    OAuth provider  │
+     │                    ├──────────────────>│
+     │                    │                    │
+     │                    │ 3. User approves  │
+     │                    │<──────────────────┤
+     │                    │                    │
+     │                    │ 4. Exchange code   │
+     │                    │    for token       │
+     │                    ├──────────────────>│
+     │                    │<──────────────────┤
+     │                    │                    │
+     │                    │ 5. Fetch user      │
+     │                    │    profile         │
+     │                    ├──────────────────>│
+     │                    │<──────────────────┤
+     │                    │                    │
+     │ 6. Redirect with  │                    │
+     │    JWT token       │                    │
+     │<───────────────────┤                    │
+     │                    │                    │
+     │ 7. Store JWT       │                    │
+     │    (localStorage)   │                    │
+     ├                    │                    │
+     │                    │                    │
+     │ 8. API Request     │                    │
+     │    with JWT        │                    │
+     ├───────────────────>│                    │
+     │                    │ 9. Validate JWT    │
+     │                    │    + Check Role    │
+     │<───────────────────┤                    │
+     │  Response Data     │                    │
+     ├                    │                    │
 ```
 
 ## 📦 Installation
@@ -77,9 +134,24 @@ pnpm build
 # Database (required for production)
 DATABASE_URL=postgresql://user:password@localhost:5432/mission_command
 
+# GitHub OAuth (required)
+GITHUB_CLIENT_ID=ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+GITHUB_CLIENT_SECRET=ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# Google OAuth (optional)
+GOOGLE_CLIENT_ID=xxx.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=GOCSPX_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# JWT Secret (required - generate with: openssl rand -base64 32)
+JWT_SECRET=your_jwt_secret_here_minimum_32_bytes
+
 # GitHub (required)
 GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 GITHUB_WEBHOOK_SECRET=your_random_webhook_secret_here
+
+# Admin Configuration (optional)
+ADMIN_EMAILS=admin@company.com,security@company.com
+ADMIN_DOMAINS=company.com
 
 # Server (optional)
 PORT=4111
@@ -88,6 +160,25 @@ PORT=4111
 CLEANUP_INTERVAL_MS=3600000
 RATE_LIMIT_CLEANUP_INTERVAL_MS=60000
 ```
+
+### OAuth App Setup
+
+**GitHub OAuth:**
+
+1. Go to https://github.com/settings/developers
+2. Click "New OAuth App"
+3. Set:
+   - Application name: `Mission Command`
+   - Homepage URL: `http://localhost:3000` (dev) or your domain (prod)
+   - Callback URL: `http://localhost:4111/api/auth/callback`
+4. Copy Client ID and Client Secret to `.env`
+
+**Google OAuth:**
+
+1. Go to https://console.cloud.google.com/apis/credentials
+2. Create OAuth 2.0 credentials
+3. Set authorized redirect URI: `http://localhost:4111/api/auth/callback`
+4. Copy Client ID and Client Secret to `.env`
 
 ## 🚀 Quick Start
 
@@ -135,20 +226,70 @@ The API will be available at http://localhost:4111
 
 ## 📖 Documentation
 
+### Core Documentation
+
+- **[API Reference](./docs/API_REFERENCE.md)** - Complete API endpoint documentation
+- **[Security Guide](./docs/SECURITY_GUIDE.md)** - Security best practices and hardening
+- **[Troubleshooting Guide](./docs/TROUBLESHOOTING.md)** - Common issues and solutions
+- **[Migration Guide](./docs/MIGRATION_GUIDE.md)** - Version migration instructions
+- **[Contributing Guide](./docs/CONTRIBUTING.md)** - Development contribution guidelines
+
+### Phase Documentation
+
 - **[Phase 4 Implementation](./PHASE_4_IMPLEMENTATION.md)** - Production hardening documentation
+- **[Phase 5 Authentication](./PHASE_5_AUTH_IMPLEMENTATION.md)** - OAuth and RBAC implementation
 - **[Code Review Workflow](./CODE_REVIEW_WORKFLOW.md)** - Workflow implementation guide
 - **[UI README](./ui/README.md)** - UI component documentation
 - **[GitHub Tools README](./src/tools/README.md)** - GitHub API tools documentation
 
+### Architecture
+
+- **[Architecture](./ARCHITECTURE.md)** - System architecture and component diagrams
+- **[Deployment](./DEPLOYMENT.md)** - Production deployment guide
+- **[Development](./DEVELOPMENT.md)** - Development environment setup
+
 ## 🎨 UI Views
 
-| View | Purpose | Route |
-|------|---------|-------|
-| **Mission Catalog** | Browse and create workflows | `/` |
-| **Mission Detail** | View/edit workflow definition | `/workflow/:id` |
-| **Mission Runs** | List workflow executions | `/runs` |
-| **Run Detail** | Monitor execution status | `/runs/:runId` |
-| **Approval Queue** | Review pending approvals | `/approvals` |
+| View | Purpose | Route | Required Role |
+|------|---------|-------|---------------|
+| **Login** | OAuth authentication | `/login` | Public |
+| **Mission Catalog** | Browse and create workflows | `/` | Viewer+ |
+| **Mission Detail** | View/edit workflow definition | `/workflow/:id` | Viewer+ |
+| **Mission Runs** | List workflow executions | `/runs` | Viewer+ |
+| **Run Detail** | Monitor execution status | `/runs/:runId` | Viewer+ |
+| **Approval Queue** | Review pending approvals | `/approvals` | Operator+ |
+| **User Management** | Manage users and roles | `/admin/users` | Admin |
+
+## 👥 Role-Based Access Control (RBAC)
+
+### Roles
+
+| Role | Permissions |
+|------|-------------|
+| **Admin** | Full access, user management, system settings, workflow management |
+| **Operator** | Execute workflows, approve/decline requests, view runs |
+| **Viewer** | Read-only access to workflows and runs |
+
+### Role Assignment
+
+Users are assigned roles based on:
+
+1. **Email-Based Admin**: `ADMIN_EMAILS` environment variable
+2. **Domain-Based Admin**: `ADMIN_DOMAINS` environment variable
+3. **Default Role**: `viewer` for all other users
+
+### API Authorization
+
+```typescript
+// Admin-only endpoint
+app.get('/api/admin/*', requireRole('admin'));
+
+// Operator+ endpoint
+app.post('/api/workflows/*/execute', requireRole('operator'));
+
+// Viewer+ endpoint
+app.get('/api/workflows', requireRole('viewer'));
+```
 
 ## 🔌 GitHub Integration
 
@@ -212,11 +353,16 @@ pnpm test:e2e
 
 ## 🔒 Security Features
 
-- **Signature Verification** - HMAC-SHA256 webhook signature verification
-- **Rate Limiting** - 100 requests/hour per IP (configurable)
-- **TTL-based Expiration** - Suspended runs auto-expire after 7 days
+- **OAuth2 Authentication** - GitHub and Google OAuth with secure token handling
+- **JWT-Based Sessions** - Stateless authentication with HMAC-SHA256 signing
+- **Role-Based Access Control (RBAC)** - Admin, Operator, and Viewer roles
+- **HMAC-SHA256 Webhook Verification** - Prevent webhook spoofing attacks
+- **Per-User Rate Limiting** - 100 requests/hour (configurable)
+- **Audit Logging** - All user actions logged with IP and timestamp
+- **Session Management** - HTTP-only cookies, session invalidation
 - **Input Validation** - All payloads validated with Zod schemas
-- **Environment-based Secrets** - No hardcoded credentials
+- **Environment-Based Secrets** - No hardcoded credentials
+- **CSRF Protection** - State parameter validation on OAuth flows
 
 ## 📈 Performance
 
@@ -232,11 +378,22 @@ pnpm test:e2e
 ```
 mission-command/
 ├── src/
-│   ├── server/              # Webhook handlers and middleware
-│   │   ├── github-webhook.ts
-│   │   ├── suspended-runs-storage.ts
-│   │   ├── rate-limit.ts
-│   │   └── cleanup.ts
+│   ├── server/              # API server and handlers
+│   │   ├── handlers/        # API route handlers
+│   │   │   ├── workflows.ts
+│   │   │   ├── missions.ts
+│   │   │   ├── approvals.ts
+│   │   │   └── users-api.ts
+│   │   ├── oauth-handler.ts # OAuth2 flows
+│   │   ├── jwt-middleware.ts # JWT validation
+│   │   ├── rbac-middleware.ts # Role-based auth
+│   │   ├── rate-limit.ts    # Rate limiting
+│   │   ├── audit-middleware.ts # Audit logging
+│   │   ├── user-storage.ts  # Database operations
+│   │   └── mastra-server.ts # Main server
+│   ├── auth/                # Authentication services
+│   │   ├── audit-service.ts
+│   │   └── types.ts
 │   ├── tools/               # GitHub agent tools
 │   │   ├── github-tools.ts
 │   │   └── github-tools.test.ts
@@ -244,16 +401,24 @@ mission-command/
 │   │   ├── code-review-workflow.ts
 │   │   └── index.ts
 │   └── ui/                  # React UI components
-│       ├── CatalogView.tsx
-│       ├── MissionRunsView.tsx
-│       └── ApprovalQueueView.tsx
 ├── ui/                      # Vite React app
 │   ├── src/
-│   │   ├── components/
+│   │   ├── providers/       # React Context providers
+│   │   │   ├── AuthProvider.tsx
+│   │   │   └── ProtectedRoute.tsx
+│   │   ├── components/      # Reusable components
+│   │   ├── pages/           # Page components
 │   │   ├── App.tsx
 │   │   └── main.tsx
 │   ├── index.html
 │   └── vite.config.ts
+├── docs/                    # Documentation
+│   ├── API_REFERENCE.md
+│   ├── SECURITY_GUIDE.md
+│   ├── TROUBLESHOOTING.md
+│   ├── MIGRATION_GUIDE.md
+│   └── CONTRIBUTING.md
+├── e2e/                     # E2E tests
 ├── package.json
 ├── tsconfig.json
 ├── .env.example
@@ -292,13 +457,35 @@ Error: connect ECONNREFUSED 127.0.0.1:5432
 
 **Solution**: Ensure PostgreSQL is running and `DATABASE_URL` is correct.
 
+### JWT Verification Failed
+
+```
+401 Unauthorized: Invalid token
+```
+
+**Solution**: Ensure `JWT_SECRET` is set and matches between server restarts. User should re-authenticate.
+
+### OAuth Callback Fails
+
+```
+Error exchanging code for token
+```
+
+**Solution**:
+- Verify `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` in `.env`
+- Check callback URL matches OAuth app configuration exactly
+- Ensure OAuth app is not in sandbox mode
+
 ### Table Doesn't Exist
 
 ```
-Error: relation "mastra_suspended_runs" does not exist
+Error: relation "mission_command_users" does not exist
 ```
 
-**Solution**: Call `await storage.init()` to create tables.
+**Solution**: Run database initialization to create required tables:
+```bash
+pnpm run db:init
+```
 
 ### GitHub Token Not Working
 
@@ -307,6 +494,8 @@ Error: GITHUB_TOKEN environment variable is required
 ```
 
 **Solution**: Set `GITHUB_TOKEN` in `.env` file with `repo` permissions.
+
+For more troubleshooting help, see [Troubleshooting Guide](./docs/TROUBLESHOOTING.md).
 
 ## 📝 License
 

@@ -63,8 +63,11 @@ export function MissionRunsView({ currentUserRole }: MissionRunsViewProps) {
   const { data: activeRunsData, isLoading, refetch } = useQuery({
     queryKey: ['missions', 'active'],
     queryFn: async () => {
-      const response = await client.get('/api/missions/active?page=0&perPage=50');
-      return response;
+      const response = await fetch('/api/missions/active?page=0&perPage=50');
+      if (!response.ok) {
+        throw new Error('Failed to fetch missions');
+      }
+      return response.json();
     },
     // Enable polling for real-time updates
     refetchInterval: 2000,
@@ -74,8 +77,18 @@ export function MissionRunsView({ currentUserRole }: MissionRunsViewProps) {
   // Cancel workflow mutation
   const cancelMutation = useMutation({
     mutationFn: async (runId: string) => {
-      const response = await client.post(`/api/workflows/runs/${runId}/cancel`, {});
-      return response;
+      const response = await fetch(`/api/workflows/runs/${runId}/cancel`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to cancel workflow');
+      }
+
+      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['missions', 'active'] });
@@ -97,7 +110,7 @@ export function MissionRunsView({ currentUserRole }: MissionRunsViewProps) {
   };
 
   // Filter runs
-  const filteredRuns = runs.filter((run) => {
+  const filteredRuns = runs.filter((run: WorkflowRun) => {
     if (statusFilter !== 'all' && run.status !== statusFilter) return false;
     if (workflowFilter !== 'all' && run.workflowId !== workflowFilter) return false;
     return true;
@@ -164,7 +177,7 @@ export function MissionRunsView({ currentUserRole }: MissionRunsViewProps) {
       ) : (
         /* Runs List */
         <div className="space-y-4">
-          {filteredRuns.map((run) => (
+          {filteredRuns.map((run: WorkflowRun) => (
             <RunCard
               key={run.runId}
               run={run}
@@ -404,21 +417,21 @@ type StepItemProps = {
 function StepItem({ step, index }: StepItemProps) {
   const { name, status, startedAt, completedAt, output, error } = step;
 
-  const statusIcon = {
+  const statusIcon: Record<string, string> = {
     pending: '○',
     running: '◷',
     completed: '✓',
     failed: '✗',
     suspended: '⏸',
-  }[status];
+  };
 
-  const statusColor = {
+  const statusColor: Record<string, string> = {
     pending: 'text-muted-foreground',
     running: 'text-blue-600',
     completed: 'text-green-600',
     failed: 'text-red-600',
     suspended: 'text-yellow-600',
-  }[status];
+  };
 
   const stepDuration =
     startedAt && completedAt

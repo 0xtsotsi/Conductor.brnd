@@ -145,5 +145,5 @@ CREATE INDEX IF NOT EXISTS idx_workflow_definitions_created_at ON workflow_defin
  * Run the workflow definitions table migration
  */
 export async function runWorkflowDefinitionsMigration(db: any): Promise<void> {
-  await db.query(CREATE_WORKFLOW_DEFINITIONS_TABLE_SQL);
+  await db.execute(CREATE_WORKFLOW_DEFINITIONS_TABLE_SQL);
 }

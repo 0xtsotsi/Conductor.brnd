@@ -14,7 +14,7 @@
 
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { requireRole } from '@mastra/auth/rbac-middleware';
+import { requireRole } from '@mastra/auth';
 import { requireAuth } from '../jwt-middleware';
 import type { MissionCommandUser } from '@mastra/auth';
 import type { AuditService } from '../../auth/audit-service';

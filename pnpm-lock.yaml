@@ -4,18 +4,6 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
-catalogs:
-  default:
-    '@vitest/coverage-v8':
-      specifier: 4.0.12
-      version: 4.0.12
-    '@vitest/ui':
-      specifier: 4.0.12
-      version: 4.0.12
-    vitest:
-      specifier: 4.0.12
-      version: 4.0.12
-
 overrides:
   typescript: ^5.8.3
   '@types/node': 22.13.17
@@ -890,6 +878,64 @@ importers:
       vitest:
         specifier: 'catalog:'
         version: 4.0.12(@opentelemetry/api@1.9.0)(@types/debug@4.1.12)(@types/node@22.13.17)(@vitest/ui@4.0.12)(jiti@2.6.1)(jsdom@26.1.0)(lightningcss@1.30.2)(msw@2.12.4(@types/node@22.13.17)(typescript@5.9.3))(terser@5.44.1)(tsx@4.20.6)(yaml@2.8.1)
+
+  mission-command:
+    dependencies:
+      '@hono/node-server':
+        specifier: ^1.19.6
+        version: 1.19.6(hono@4.10.6)
+      '@hono/oauth-providers':
+        specifier: ^0.8.5
+        version: 0.8.5(hono@4.10.6)
+      '@libsql/client':
+        specifier: ^0.15.15
+        version: 0.15.15
+      '@mastra/auth':
+        specifier: workspace:*
+        version: link:../packages/auth
+      '@mastra/core':
+        specifier: workspace:*
+        version: link:../packages/core
+      '@mastra/playground-ui':
+        specifier: workspace:*
+        version: link:../packages/playground-ui
+      '@mastra/react':
+        specifier: workspace:*
+        version: link:../client-sdks/react
+      '@tanstack/react-query':
+        specifier: ^5.62.0
+        version: 5.90.10(react@19.2.3)
+      hono:
+        specifier: ^4.10.6
+        version: 4.10.6
+      jose:
+        specifier: ^6.1.2
+        version: 6.1.2
+      react:
+        specifier: ^19.0.0
+        version: 19.2.3
+      zod:
+        specifier: ^3.25.76
+        version: 3.25.76
+    devDependencies:
+      '@playwright/test':
+        specifier: ^1.57.0
+        version: 1.57.0
+      '@types/node':
+        specifier: 22.13.17
+        version: 22.13.17
+      eslint:
+        specifier: ^9.18.0
+        version: 9.39.2(jiti@2.6.1)
+      prettier:
+        specifier: ^3.4.2
+        version: 3.7.4
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.5
+        version: 3.2.4(@types/debug@4.1.12)(@types/node@22.13.17)(@vitest/ui@3.2.4)(jiti@2.6.1)(jsdom@26.1.0)(lightningcss@1.30.2)(msw@2.12.4(@types/node@22.13.17)(typescript@5.9.3))(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.1)
 
   mission-command/ui:
     dependencies:
@@ -8194,6 +8240,12 @@ packages:
     peerDependencies:
       hono: ^4
 
+  '@hono/oauth-providers@0.8.5':
+    resolution: {integrity: sha512-hgEDH/gUmB/opman9jvT8dLItZsSC9M9yFiaam0b6InK7WQkdzIcaRAkdda47QpixnK9S1Ah2vjDB2U16LkMnA==}
+    engines: {node: '>=18.4.0'}
+    peerDependencies:
+      hono: '>=3.0.0'
+
   '@hono/standard-validator@0.2.0':
     resolution: {integrity: sha512-pFq0UVAnjzXcDAgqFpDeVL3MOUPrlIh/kPqBDvbCYoThVhhS+Vf37VcdsakdOFFGiqoiYVxp3LifXFhGhp/rgQ==}
     peerDependencies:
@@ -9921,6 +9973,11 @@ packages:
   '@pkgjs/parseargs@0.11.0':
     resolution: {integrity: sha512-+1VkjdD0QBLPodGrJUeqarH8VAIvQODIbwh9XpP5Syisf7YoQgsJKPNFoqqLQlu+VQ/tVSshMR6loPMn8U+dPg==}
     engines: {node: '>=14'}
+
+  '@playwright/test@1.57.0':
+    resolution: {integrity: sha512-6TyEnHgd6SArQO8UO2OMTxshln3QMWBtPGrOCgs3wVEmQmwyuNtB10IZMfmYDE0riwNR1cu4q+pPcxMVtaG3TA==}
+    engines: {node: '>=18'}
+    hasBin: true
 
   '@pnpm/config.env-replace@1.1.0':
     resolution: {integrity: sha512-htyl8TWnKL7K/ESFa1oW2UB5lVDxuF5DpM7tBi6Hu2LNL3mWkIzNLG6N4zoCUP1lCKNxWy/3iu8mS8MvToGd6w==}
@@ -16572,8 +16629,18 @@ packages:
     engines: {node: '>=18'}
     hasBin: true
 
+  playwright-core@1.57.0:
+    resolution: {integrity: sha512-agTcKlMw/mjBWOnD6kFZttAAGHgi/Nw0CZ2o6JqWSbMlI219lAFLZZCyqByTsvVAJq5XA5H8cA6PrvBRpBWEuQ==}
+    engines: {node: '>=18'}
+    hasBin: true
+
   playwright@1.56.1:
     resolution: {integrity: sha512-aFi5B0WovBHTEvpM3DzXTUaeN6eN0qWnTkKx4NQaH4Wvcmc153PdaY2UBdSYKaGYw+UyWXSVyxDUg5DoPEttjw==}
+    engines: {node: '>=18'}
+    hasBin: true
+
+  playwright@1.57.0:
+    resolution: {integrity: sha512-ilYQj1s8sr2ppEJ2YVadYBN0Mb3mdo9J0wQ+UuDhzYqURwSoW4n1Xs5vs7ORwgDGmyEh33tRMeS8KhdkMoLXQw==}
     engines: {node: '>=18'}
     hasBin: true
 
@@ -22399,6 +22466,10 @@ snapshots:
     dependencies:
       hono: 4.10.6
 
+  '@hono/oauth-providers@0.8.5(hono@4.10.6)':
+    dependencies:
+      hono: 4.10.6
+
   '@hono/standard-validator@0.2.0(@standard-schema/spec@1.1.0)(hono@4.10.6)':
     dependencies:
       '@standard-schema/spec': 1.1.0
@@ -24495,6 +24566,10 @@ snapshots:
 
   '@pkgjs/parseargs@0.11.0':
     optional: true
+
+  '@playwright/test@1.57.0':
+    dependencies:
+      playwright: 1.57.0
 
   '@pnpm/config.env-replace@1.1.0': {}
 
@@ -32571,9 +32646,17 @@ snapshots:
 
   playwright-core@1.56.1: {}
 
+  playwright-core@1.57.0: {}
+
   playwright@1.56.1:
     dependencies:
       playwright-core: 1.56.1
+    optionalDependencies:
+      fsevents: 2.3.2
+
+  playwright@1.57.0:
+    dependencies:
+      playwright-core: 1.57.0
     optionalDependencies:
       fsevents: 2.3.2
 

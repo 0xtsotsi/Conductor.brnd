@@ -10,8 +10,8 @@
 import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MastraReactProvider } from '@mastra/react';
-import { AuthProvider, useAuth } from './providers/AuthProvider';
-import { ProtectedRoute, UnauthorizedPage, LoginPage } from './providers/ProtectedRoute';
+import { AuthProvider, useAuth } from '../../providers/AuthProvider';
+import { ProtectedRoute } from '../../components/ProtectedRoute';
 
 // Import Mission Command UI components
 import {
@@ -20,7 +20,7 @@ import {
   CreateWorkflowView,
   ApprovalQueueView,
   MissionRunsView,
-} from './index';
+} from '../index';
 
 /**
  * Create React Query client
@@ -39,7 +39,8 @@ const queryClient = new QueryClient({
  * Dashboard Layout Component
  */
 function DashboardLayout() {
-  const { user, role, logout } = useAuth();
+  const { user, logout } = useAuth();
+  const role = user?.role ?? 'viewer';
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -120,7 +121,7 @@ function DashboardLayout() {
               <ProtectedRoute>
                 {role && (
                   <CatalogView
-                    onWorkflowSelect={(id) => console.log('Selected:', id)}
+                    onWorkflowSelect={(id: string) => console.log('Selected:', id)}
                     onWorkflowCreate={() => console.log('Create workflow')}
                     currentUserRole={role}
                   />
@@ -138,6 +139,8 @@ function DashboardLayout() {
                   <WorkflowDetailView
                     workflowId="placeholder"
                     onBack={() => console.log('Back to catalog')}
+                    onEdit={() => console.log('Edit workflow')}
+                    onDelete={() => console.log('Delete workflow')}
                     currentUserRole={role}
                   />
                 )}
@@ -149,11 +152,12 @@ function DashboardLayout() {
           <Route
             path="/workflow/new"
             element={
-              <ProtectedRoute requireRole={['admin', 'operator']}>
+              <ProtectedRoute requiredRole="admin">
                 {role && (
                   <CreateWorkflowView
+                    mode="create"
                     onCancel={() => console.log('Cancel')}
-                    onSave={(config) => console.log('Save:', config)}
+                    onSave={async (config: any) => console.log('Save:', config)}
                     currentUserRole={role}
                   />
                 )}
@@ -165,7 +169,7 @@ function DashboardLayout() {
           <Route
             path="/approvals"
             element={
-              <ProtectedRoute requireRole={['admin', 'operator']}>
+              <ProtectedRoute requiredRole="operator">
                 {role && <ApprovalQueueView currentUserRole={role} />}
               </ProtectedRoute>
             }
@@ -178,17 +182,12 @@ function DashboardLayout() {
               <ProtectedRoute>
                 {role && (
                   <MissionRunsView
-                    workflowId="placeholder"
-                    onRunSelect={(runId) => console.log('Selected run:', runId)}
                     currentUserRole={role}
                   />
                 )}
               </ProtectedRoute>
             }
           />
-
-          {/* Unauthorized Page */}
-          <Route path="/unauthorized" element={<UnauthorizedPage />} />
 
           {/* Catch-all - redirect to home */}
           <Route path="*" element={<Navigate to="/" replace />} />
@@ -215,11 +214,8 @@ export default function App() {
     <BrowserRouter>
       <QueryClientProvider client={queryClient}>
         <MastraReactProvider baseUrl={apiUrl}>
-          <AuthProvider apiUrl={apiUrl}>
+          <AuthProvider>
             <Routes>
-              {/* Public Login Route */}
-              <Route path="/login" element={<LoginPage />} />
-
               {/* Protected Routes */}
               <Route path="/*" element={<DashboardLayout />} />
             </Routes>

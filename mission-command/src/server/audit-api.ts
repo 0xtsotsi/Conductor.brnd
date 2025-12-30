@@ -12,7 +12,7 @@
  */
 
 import { Hono } from 'hono';
-import { requireRole } from '@mastra/auth/rbac-middleware';
+import { requireRole } from '@mastra/auth';
 import { requireAuth } from './jwt-middleware';
 import type { AuditService, AuditLogFilters, AuditEventType } from '../auth/audit-service';
 import type { MissionCommandUser } from '@mastra/auth';

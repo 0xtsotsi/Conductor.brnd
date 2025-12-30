@@ -8,7 +8,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import type { OAuthStorage } from './oauth-handler';
-import { requireRole, requirePermission } from '@mastra/auth/rbac-middleware';
+import { requireRole, requirePermission } from '@mastra/auth';
 import { requireAuth } from './jwt-middleware';
 import type { MissionCommandUser } from '@mastra/auth';
 
