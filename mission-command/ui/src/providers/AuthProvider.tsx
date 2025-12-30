@@ -12,6 +12,7 @@ interface AuthContextType {
   user: MissionCommandUser | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  token: string | null;
   login: (token: string) => void;
   logout: () => void;
 }
@@ -23,15 +24,16 @@ const API_URL = import.meta.env.VITE_MASTRA_API_URL || '';
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<MissionCommandUser | null>(null);
+  const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   // Load user from JWT on mount
   useEffect(() => {
-    const token = localStorage.getItem(TOKEN_KEY);
-    if (token) {
+    const storedToken = localStorage.getItem(TOKEN_KEY);
+    if (storedToken) {
       try {
         // Decode JWT payload (without verification - that's server-side)
-        const payload = JSON.parse(atob(token.split('.')[1]));
+        const payload = JSON.parse(atob(storedToken.split('.')[1]));
 
         // Ensure role exists (default to viewer)
         if (!payload.role) {
@@ -39,6 +41,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
         setUser(payload as MissionCommandUser);
+        setToken(storedToken);
       } catch (error) {
         console.error('Failed to decode JWT:', error);
         localStorage.removeItem(TOKEN_KEY);
@@ -47,17 +50,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsLoading(false);
   }, []);
 
-  const login = (token: string) => {
+  const login = (newToken: string) => {
     try {
-      localStorage.setItem(TOKEN_KEY, token);
+      localStorage.setItem(TOKEN_KEY, newToken);
 
       // Decode JWT to get user info
-      const payload = JSON.parse(atob(token.split('.')[1]));
+      const payload = JSON.parse(atob(newToken.split('.')[1]));
       if (!payload.role) {
         payload.role = 'viewer';
       }
 
       setUser(payload as MissionCommandUser);
+      setToken(newToken);
     } catch (error) {
       console.error('Failed to decode JWT during login:', error);
       throw new Error('Invalid token');
@@ -67,12 +71,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = () => {
     localStorage.removeItem(TOKEN_KEY);
     setUser(null);
+    setToken(null);
   };
 
   const value = {
     user,
     isAuthenticated: !!user,
     isLoading,
+    token,
     login,
     logout,
   };

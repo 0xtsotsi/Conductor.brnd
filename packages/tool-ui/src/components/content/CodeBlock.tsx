@@ -1,6 +1,5 @@
-import React from 'react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { vscDarkPlus, vsDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { vscDarkPlus, dark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { cn } from '../../lib/utils';
 
 /**
@@ -102,7 +101,7 @@ export function CodeBlock({
   theme = 'vsc-dark-plus',
 }: CodeBlockProps) {
   const normalizedLanguage = normalizeLanguage(language);
-  const themeStyle = theme === 'vs-dark' ? vsDark : vscDarkPlus;
+  const themeStyle = theme === 'vs-dark' ? dark : vscDarkPlus;
   const displayTitle = title || filename;
 
   return (

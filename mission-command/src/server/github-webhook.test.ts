@@ -3,7 +3,74 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { createGitHubWebhookRouter, registerSuspendedRun, setWorkflowResumeFunction, verifyGitHubSignature } from './github-webhook';
+
+// Mock dependencies before importing
+vi.mock('hono', () => {
+  const createMockRouteHandler = (method: string, path: string, ...handlers: any[]) => {
+    const handler = handlers[handlers.length - 1];
+    const middleware = handlers.slice(0, -1);
+    const fn = async (context: any) => {
+      for (const mw of middleware) {
+        const result = await mw(context, async () => {});
+        if (result) return result;
+      }
+      if (typeof handler === 'function') {
+        return await handler(context);
+      }
+      console.error(`${method} ${path} handler type:`, typeof handler, 'handlers:', handlers);
+      throw new Error(`Handler is not a function for ${method} ${path}`);
+    };
+    return fn;
+  };
+
+  class MockHono {
+    routes = new Map();
+    get(path: string, ...handlers: any[]) {
+      const key = `GET:${path}`;
+      if (this.routes.has(key)) {
+        // Return existing route handler
+        return this.routes.get(key);
+      }
+      const fn = createMockRouteHandler('GET', path, ...handlers);
+      this.routes.set(key, fn);
+      return fn;
+    }
+    post(path: string, ...handlers: any[]) {
+      const key = `POST:${path}`;
+      if (this.routes.has(key)) {
+        // Return existing route handler
+        return this.routes.get(key);
+      }
+      const fn = createMockRouteHandler('POST', path, ...handlers);
+      this.routes.set(key, fn);
+      return fn;
+    }
+  }
+
+  return {
+    Hono: MockHono,
+  };
+});
+
+vi.mock('./rate-limit', () => {
+  const middlewareFn = async (c: any, next: any) => next();
+  return {
+    createGitHubWebhookRateLimit: () => middlewareFn,
+    rateLimit: () => middlewareFn,
+  };
+});
+
+import { createGitHubWebhookRouter, registerSuspendedRun, setWorkflowResumeFunction, setSuspendedRunsStorage, verifyGitHubSignature } from './github-webhook';
+import type { SuspendedRun } from './suspended-runs-storage';
+
+// Mock storage
+const mockSuspendedRunsStorage = {
+  registerSuspendedRun: vi.fn().mockResolvedValue(undefined),
+  findSuspendedRun: vi.fn(),
+  removeSuspendedRun: vi.fn().mockResolvedValue(undefined),
+  listSuspendedRuns: vi.fn().mockResolvedValue([]),
+  cleanupExpiredRuns: vi.fn().mockResolvedValue(0),
+};
 
 describe('GitHub Webhook Handler', () => {
   let mockResumeFunction: any;
@@ -11,9 +78,15 @@ describe('GitHub Webhook Handler', () => {
 
   beforeEach(() => {
     // Reset state
+    vi.clearAllMocks();
     mockResumeFunction = vi.fn().mockResolvedValue(undefined);
     setWorkflowResumeFunction(mockResumeFunction);
+    setSuspendedRunsStorage(mockSuspendedRunsStorage as any);
     router = createGitHubWebhookRouter();
+
+    // Reset mock behaviors
+    mockSuspendedRunsStorage.findSuspendedRun.mockResolvedValue(null);
+    mockSuspendedRunsStorage.listSuspendedRuns.mockResolvedValue([]);
   });
 
   describe('verifyGitHubSignature', () => {
@@ -32,7 +105,12 @@ describe('GitHub Webhook Handler', () => {
     it('should reject invalid signature', () => {
       const payload = JSON.stringify({ test: 'data' });
       const secret = 'webhook-secret';
-      const signature = 'sha256=invalid';
+      const crypto = require('crypto');
+      const hmac = crypto.createHmac('sha256', secret);
+      hmac.update(payload);
+      const validSignature = `sha256=${hmac.digest('hex')}`;
+      // Modify the signature to make it invalid
+      const signature = validSignature.replace(/[a-f0-9]{2}$/, 'ff');
 
       const result = verifyGitHubSignature(payload, signature, secret);
       expect(result).toBe(false);
@@ -48,8 +126,8 @@ describe('GitHub Webhook Handler', () => {
   });
 
   describe('registerSuspendedRun', () => {
-    it('should register a suspended run', () => {
-      registerSuspendedRun({
+    it('should register a suspended run', async () => {
+      await registerSuspendedRun({
         runId: 'run-123',
         prNumber: 42,
         prUrl: 'https://github.com/owner/repo/pull/42',
@@ -57,8 +135,16 @@ describe('GitHub Webhook Handler', () => {
         repo: 'repo',
       });
 
-      // The run should now be findable
-      // This is tested implicitly through webhook processing
+      expect(mockSuspendedRunsStorage.registerSuspendedRun).toHaveBeenCalledWith(
+        expect.objectContaining({
+          runId: 'run-123',
+          prNumber: 42,
+          prUrl: 'https://github.com/owner/repo/pull/42',
+          owner: 'owner',
+          repo: 'repo',
+          ttlDays: 7,
+        })
+      );
     });
   });
 
@@ -124,13 +210,26 @@ describe('GitHub Webhook Handler', () => {
 
     it('should process PR merged event', async () => {
       // Register suspended run
-      registerSuspendedRun({
+      await registerSuspendedRun({
         runId: 'run-123',
         prNumber: 42,
         prUrl: 'https://github.com/owner/repo/pull/42',
         owner: 'owner',
         repo: 'repo',
       });
+
+      // Mock findSuspendedRun to return the registered run
+      const mockSuspendedRun: SuspendedRun = {
+        id: 'test-id',
+        runId: 'run-123',
+        prNumber: 42,
+        prUrl: 'https://github.com/owner/repo/pull/42',
+        owner: 'owner',
+        repo: 'repo',
+        createdAt: new Date(),
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      };
+      mockSuspendedRunsStorage.findSuspendedRun.mockResolvedValue(mockSuspendedRun);
 
       const crypto = require('crypto');
       const payload = JSON.stringify(validPayload);
@@ -183,13 +282,26 @@ describe('GitHub Webhook Handler', () => {
 
     it('should process PR closed event', async () => {
       // Register suspended run
-      registerSuspendedRun({
+      await registerSuspendedRun({
         runId: 'run-123',
         prNumber: 42,
         prUrl: 'https://github.com/owner/repo/pull/42',
         owner: 'owner',
         repo: 'repo',
       });
+
+      // Mock findSuspendedRun to return the registered run
+      const mockSuspendedRun: SuspendedRun = {
+        id: 'test-id',
+        runId: 'run-123',
+        prNumber: 42,
+        prUrl: 'https://github.com/owner/repo/pull/42',
+        owner: 'owner',
+        repo: 'repo',
+        createdAt: new Date(),
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      };
+      mockSuspendedRunsStorage.findSuspendedRun.mockResolvedValue(mockSuspendedRun);
 
       const closedPayload = {
         ...validPayload,
@@ -313,22 +425,30 @@ describe('GitHub Webhook Handler', () => {
 
   describe('GET /webhooks/github/suspended', () => {
     it('should list suspended runs', async () => {
-      // Register some suspended runs
-      registerSuspendedRun({
-        runId: 'run-1',
-        prNumber: 42,
-        prUrl: 'https://github.com/owner/repo/pull/42',
-        owner: 'owner',
-        repo: 'repo',
-      });
-
-      registerSuspendedRun({
-        runId: 'run-2',
-        prNumber: 43,
-        prUrl: 'https://github.com/owner/repo/pull/43',
-        owner: 'owner',
-        repo: 'repo',
-      });
+      // Mock listSuspendedRuns to return runs
+      const mockRuns: SuspendedRun[] = [
+        {
+          id: 'id-1',
+          runId: 'run-1',
+          prNumber: 42,
+          prUrl: 'https://github.com/owner/repo/pull/42',
+          owner: 'owner',
+          repo: 'repo',
+          createdAt: new Date(),
+          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        },
+        {
+          id: 'id-2',
+          runId: 'run-2',
+          prNumber: 43,
+          prUrl: 'https://github.com/owner/repo/pull/43',
+          owner: 'owner',
+          repo: 'repo',
+          createdAt: new Date(),
+          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        },
+      ];
+      mockSuspendedRunsStorage.listSuspendedRuns.mockResolvedValue(mockRuns);
 
       // Mock Hono context
       const mockContext = {
