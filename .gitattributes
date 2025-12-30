@@ -1,0 +1,12 @@
+
+# Git Trees for workspace isolation
+mission-command/ git-tree=mission-command
+mission-command/** git-tree=mission-command
+
+# Claude files - separate tree
+.claude/ git-tree=claude-config
+.serena/ git-tree=serena-cache
+
+# Ignore build artifacts
+mission-command/ui/dist/ export-ignore
+mission-command/node_modules/ export-ignore
