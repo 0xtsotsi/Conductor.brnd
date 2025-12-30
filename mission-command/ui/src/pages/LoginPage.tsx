@@ -51,30 +51,9 @@ export function LoginPage() {
       return;
     }
 
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      // Create a mock JWT for development
-      const mockUser = {
-        sub: 'dev-user',
-        email: 'dev@example.com',
-        name: 'Dev User',
-        role: 'admin', // Dev user always has admin role
-      };
-
-      // Create a mock JWT (not signed, just for dev)
-      const header = btoa(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
-      const payload = btoa(JSON.stringify(mockUser));
-      const signature = 'dev-signature';
-      const mockToken = `${header}.${payload}.${signature}`;
-
-      login(mockToken);
-      navigate(redirectTo, { replace: true });
-    } catch (err) {
-      setError('Failed to login with dev account');
-      setIsLoading(false);
-    }
+    // SECURITY: In dev mode, redirect to OAuth flow instead of generating mock JWT
+    // This ensures authentication is properly handled server-side
+    handleOAuthLogin('github');
   };
 
   return (
