@@ -79,3 +79,42 @@ export type {
   CleanupJobConfig,
   CleanupResult,
 } from './cleanup';
+
+// Export audit service
+export {
+  createAuditService,
+  AuditService,
+  extractIpAddress,
+  extractUserAgent,
+  redactPII,
+} from '../auth/audit-service';
+
+export type {
+  AuditEvent,
+  AuditLogEntry,
+  AuditEventType,
+  AuditLogFilters,
+  AuditLogResult,
+  AuditServiceConfig,
+} from '../auth/audit-service';
+
+// Export audit middleware
+export {
+  createAuditMiddleware,
+  createAuthorizationAuditMiddleware,
+  createAdminAuditMiddleware,
+  createAuditMiddlewareStack,
+} from './audit-middleware';
+
+export type {
+  AuditMiddlewareOptions,
+} from './audit-middleware';
+
+// Export audit API
+export {
+  createAuditAPI,
+} from './audit-api';
+
+export type {
+  AuditAPIOptions,
+} from './audit-api';

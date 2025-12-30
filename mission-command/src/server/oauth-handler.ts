@@ -106,6 +106,74 @@ export interface OAuthStorage {
    * Update user
    */
   updateUser(id: string, updates: Partial<MissionCommandUserDB>): Promise<MissionCommandUserDB>;
+
+  /**
+   * Get user by ID
+   */
+  getUser(userId: string): Promise<MissionCommandUserDB | null>;
+
+  /**
+   * List all users with pagination and filters
+   */
+  listUsers(
+    limit?: number,
+    offset?: number,
+    filters?: { role?: string; search?: string }
+  ): Promise<{ users: MissionCommandUserDB[]; total: number }>;
+
+  /**
+   * Delete user by ID
+   */
+  deleteUser(userId: string): Promise<void>;
+
+  /**
+   * Get user sessions with pagination
+   */
+  getUserSessions(
+    userId: string,
+    limit?: number,
+    offset?: number
+  ): Promise<{ sessions: any[]; total: number }>;
+
+  /**
+   * Create a session
+   */
+  createSession?(session: any): Promise<any>;
+
+  /**
+   * Get session by token hash
+   */
+  getSessionByTokenHash?(tokenHash: string): Promise<any | null>;
+
+  /**
+   * Invalidate a session
+   */
+  invalidateSession?(sessionId: string): Promise<void>;
+
+  /**
+   * Invalidate all sessions for a user
+   */
+  invalidateAllUserSessions?(userId: string): Promise<void>;
+
+  /**
+   * Clean up expired sessions
+   */
+  cleanupExpiredSessions?(): Promise<number>;
+
+  /**
+   * Log audit event
+   */
+  logAuditEvent?(event: any): Promise<any>;
+
+  /**
+   * Get audit logs for a user
+   */
+  getAuditLogs?(userId: string, limit?: number, offset?: number): Promise<any[]>;
+
+  /**
+   * Get all audit logs (admin only)
+   */
+  getAllAuditLogs?(limit?: number, offset?: number): Promise<any[]>;
 }
 
 /**

@@ -677,4 +677,130 @@ export class PgUserStorage extends PgDB implements OAuthStorage {
       createdAt: new Date(row.created_at),
     }));
   }
+
+
+  /**
+   * List all users with pagination
+   */
+  async listUsers(
+    limit: number = 50,
+    offset: number = 0,
+    filters?: { role?: string; search?: string }
+  ): Promise<{ users: any[]; total: number }> {
+    let whereClause = '';
+    const params: any[] = [];
+    const conditions: string[] = [];
+
+    if (filters?.role) {
+      conditions.push(`role = $${params.length + 1}`);
+      params.push(filters.role);
+    }
+
+    if (filters?.search) {
+      conditions.push(`(email ILIKE $${params.length + 1} OR name ILIKE $${params.length + 1})`);
+      params.push(`%${filters.search}%`);
+    }
+
+    if (conditions.length > 0) {
+      whereClause = `WHERE ${conditions.join(' AND ')}`;
+    }
+
+    // Get total count
+    const countResult = await this.query(
+      `SELECT COUNT(*) as count FROM ${TABLE_USERS} ${whereClause}`,
+      params
+    );
+    const total = parseInt(countResult[0].count);
+
+    // Get paginated users
+    const usersResult = await this.query(
+      `SELECT * FROM ${TABLE_USERS} ${whereClause} ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      [...params, limit, offset]
+    );
+
+    const users = usersResult.map((row: any) => ({
+      id: row.id,
+      sub: row.sub,
+      email: row.email,
+      name: row.name || undefined,
+      avatar_url: row.avatar_url || undefined,
+      provider: row.provider,
+      role: row.role,
+      created_at: new Date(row.created_at),
+      updated_at: new Date(row.updated_at),
+    }));
+
+    return { users, total };
+  }
+
+  /**
+   * Get user by ID
+   */
+  async getUser(userId: string): Promise<any> {
+    const result = await this.query(
+      `SELECT * FROM ${TABLE_USERS} WHERE id = $1`,
+      [userId]
+    );
+
+    if (result.length === 0) {
+      return null;
+    }
+
+    const row = result[0];
+    return {
+      id: row.id,
+      sub: row.sub,
+      email: row.email,
+      name: row.name || undefined,
+      avatar_url: row.avatar_url || undefined,
+      provider: row.provider,
+      role: row.role,
+      created_at: new Date(row.created_at),
+      updated_at: new Date(row.updated_at),
+    };
+  }
+
+  /**
+   * Delete user by ID
+   */
+  async deleteUser(userId: string): Promise<void> {
+    await this.delete({
+      tableName: TABLE_USERS as any,
+      where: { id: userId },
+    });
+  }
+
+  /**
+   * Get user sessions with pagination
+   */
+  async getUserSessions(
+    userId: string,
+    limit: number = 50,
+    offset: number = 0
+  ): Promise<{ sessions: UserSession[]; total: number }> {
+    // Get total count
+    const countResult = await this.query(
+      `SELECT COUNT(*) as count FROM ${TABLE_SESSIONS} WHERE user_id = $1`,
+      [userId]
+    );
+    const total = parseInt(countResult[0].count);
+
+    // Get sessions
+    const result = await this.query(
+      `SELECT * FROM ${TABLE_SESSIONS} WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
+      [userId, limit, offset]
+    );
+
+    const sessions: UserSession[] = result.map((row: any) => ({
+      id: row.id,
+      userId: row.user_id,
+      tokenHash: row.token_hash,
+      expiresAt: new Date(row.expires_at),
+      createdAt: new Date(row.created_at),
+      ipAddress: row.ip_address || undefined,
+      userAgent: row.user_agent || undefined,
+    }));
+
+    return { sessions, total };
+  }
 }

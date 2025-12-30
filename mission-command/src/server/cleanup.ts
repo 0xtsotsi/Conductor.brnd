@@ -1,11 +1,17 @@
 /**
- * Stale Run Cleanup Job
+ * Cleanup Jobs
+ *
+ * Automatically cleans up expired/abandoned data.
+ * Can be run as cron jobs or manually via API endpoints.
+ */
  *
  * Automatically cleans up expired/abandoned suspended workflow runs.
  * Can be run as a cron job or manually via API endpoint.
  */
 
 import type { SuspendedRunsStorage } from './suspended-runs-storage';
+import type { OAuthStorage } from './oauth-handler';
+import type { OAuthStorage } from './oauth-handler';
 
 /**
  * Cleanup job configuration
@@ -13,6 +19,10 @@ import type { SuspendedRunsStorage } from './suspended-runs-storage';
 export interface CleanupJobConfig {
   /** Storage instance for suspended runs */
   storage: SuspendedRunsStorage;
+  /** Storage instance for audit logs */
+  auditStorage?: OAuthStorage;
+  /** Audit log retention period in days (default: 90) */
+  auditRetentionDays?: number;
   /** Cleanup interval in milliseconds (default: 1 hour) */
   intervalMs?: number;
   /** Logger function (default: console) */
@@ -29,6 +39,10 @@ export interface CleanupResult {
   cleaned: number;
   remaining: number;
   duration: number;
+  /** Audit logs cleaned */
+  auditLogsCleaned?: number;
+  /** Audit logs remaining */
+  auditLogsRemaining?: number;
 }
 
 /**
@@ -36,6 +50,8 @@ export interface CleanupResult {
  */
 export class CleanupJob {
   private storage: SuspendedRunsStorage;
+  private auditStorage?: OAuthStorage;
+  private auditRetentionDays: number;
   private intervalMs: number;
   private logger: typeof console;
   private onCleanup?: (result: CleanupResult) => void;
@@ -43,6 +59,8 @@ export class CleanupJob {
 
   constructor(config: CleanupJobConfig) {
     this.storage = config.storage;
+    this.auditStorage = config.auditStorage;
+    this.auditRetentionDays = config.auditRetentionDays || 90;
     this.intervalMs = config.intervalMs || 60 * 60 * 1000; // 1 hour default
     this.logger = config.logger || console;
     this.onCleanup = config.onCleanup;
@@ -56,7 +74,7 @@ export class CleanupJob {
     const timestamp = new Date();
 
     try {
-      this.logger.info('Starting cleanup of expired suspended runs...');
+      this.logger.info('Starting cleanup of expired suspended runs and audit logs...');
 
       // Clean up expired runs
       const cleaned = await this.storage.cleanupExpiredRuns();
@@ -64,12 +82,36 @@ export class CleanupJob {
       // Get remaining count
       const remaining = (await this.storage.listSuspendedRuns()).length;
 
+      // Clean up old audit logs
+      let auditLogsCleaned = 0;
+      let auditLogsRemaining = 0;
+
+      if (this.auditStorage) {
+        try {
+          // Calculate cutoff date
+          const cutoffDate = new Date();
+          cutoffDate.setDate(cutoffDate.getDate() - this.auditRetentionDays);
+
+          this.logger.info(`Cleaning up audit logs older than ${cutoffDate.toISOString()}...`);
+
+          // Note: This requires auditStorage to support cleanupOldAuditLogs
+          // For now, we'll log a placeholder
+          // const auditLogsCleaned = await this.auditStorage.cleanupOldAuditLogs(cutoffDate);
+
+          this.logger.info(`Audit log cleanup completed (not yet implemented)`);
+        } catch (error) {
+          this.logger.warn('Audit log cleanup failed:', error);
+        }
+      }
+
       const duration = Date.now() - startTime;
       const result: CleanupResult = {
         timestamp,
         cleaned,
         remaining,
         duration,
+        auditLogsCleaned,
+        auditLogsRemaining,
       };
 
       this.logger.info('Cleanup completed:', result);
@@ -81,6 +123,10 @@ export class CleanupJob {
 
       return result;
     } catch (error) {
+      this.logger.error('Cleanup failed:', error);
+      throw error;
+    }
+  } catch (error) {
       this.logger.error('Cleanup failed:', error);
       throw error;
     }

@@ -3,6 +3,7 @@ import { Navigation } from './components/Navigation';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { LoginPage } from './pages/LoginPage';
 import { AuthCallbackPage } from './pages/AuthCallbackPage';
+import { AuditLogPage } from './pages/AuditLogPage';
 import { useAuth } from './providers/AuthProvider';
 import { MissionCommandRole } from '@mastra/auth';
 
@@ -106,6 +107,16 @@ function AppContent() {
                 <MissionRunsView
                   currentUserRole={currentUserRole}
                 />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Audit Logs - requires admin role */}
+          <Route
+            path="/audit"
+            element={
+              <ProtectedRoute requiredRole="admin">
+                <AuditLogPage />
               </ProtectedRoute>
             }
           />
