@@ -1,66 +1,92 @@
 # Multi-stage Dockerfile for Mission Command Centre
-# Stage 1: Dependencies
-FROM node:20-alpine AS deps
+
+# Stage 1: Build Dependencies
+FROM node:18-alpine AS deps
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
+# Install pnpm
+RUN npm install -g pnpm@9.7.0
+
 # Copy package files
 COPY package.json pnpm-lock.yaml ./
-RUN corepack enable pnpm && pnpm i --frozen-lockfile
+COPY packages/mission-command/package.json ./packages/mission-command/
 
-# Stage 2: Build Mission Command package
-FROM node:20-alpine AS build-mission-command
+# Install dependencies
+RUN pnpm install --frozen-lockfile
+
+# Stage 2: Build Mission Command Package
+FROM node:18-alpine AS build
 WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
-COPY . .
 
-# Build the mission-command package
-RUN corepack enable pnpm && pnpm build
+# Install pnpm
+RUN npm install -g pnpm@9.7.0
+
+# Copy dependencies from deps stage
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/packages/mission-command/node_modules ./packages/mission-command/node_modules
+
+# Copy source files
+COPY packages/mission-command ./packages/mission-command
+COPY package.json pnpm-lock.yaml ./
+COPY tsconfig.json ./
+COPY packages/core ./packages/core
+COPY packages/server ./packages/server
+
+# Build the package
+RUN pnpm build --filter=@mission-command
 
 # Stage 3: Build UI
-FROM node:20-alpine AS build-ui
-WORKDIR /app/ui
-COPY --from=build-mission-command /app/node_modules ./node_modules
-COPY ui/package.json ui/pnpm-lock.yaml ./
-RUN corepack enable pnpm && pnpm i --frozen-lockfile
-
-COPY ui/ ./
-RUN pnpm build
-
-# Stage 4: Production runtime
-FROM node:20-alpine AS runner
+FROM node:18-alpine AS ui-build
 WORKDIR /app
 
-# Install production dependencies only
-RUN apk add --no-cache dumb-init
+# Install pnpm
+RUN npm install -g pnpm@9.7.0
+
+# Copy UI dependencies
+COPY packages/mission-command/ui/package.json ./packages/mission-command/ui/
+RUN cd packages/mission-command/ui && pnpm install
+
+# Copy UI source and build
+COPY packages/mission-command/ui ./packages/mission-command/ui
+RUN cd packages/mission-command/ui && pnpm build
+
+# Stage 4: Production Runtime
+FROM node:18-alpine AS runtime
+WORKDIR /app
+
+# Install runtime dependencies
+RUN apk add --no-cache \
+    openssl \
+    curl \
+    && npm install -g pnpm@9.7.0
 
 # Create non-root user
 RUN addgroup -g 1001 -S nodejs && \
-    adduser -S missioncmd -u 1001
+    adduser -S nodejs -u 1001
 
-# Copy built mission-command package
-COPY --from=build-mission-command --chown=missioncmd:nodejs /app/dist ./dist
-COPY --from=build-mission-command --chown=missioncmd:nodejs /app/node_modules ./node_modules
-COPY --from=build-mission-command --chown=missioncmd:nodejs /app/package.json ./
+# Copy built files from build stages
+COPY --from=build --chown=nodejs:nodejs /app/packages/mission-command/dist ./packages/mission-command/dist
+COPY --from=build --chown=nodejs:nodejs /app/packages/mission-command/package.json ./packages/mission-command/
+COPY --from=ui-build --chown=nodejs:nodejs /app/packages/mission-command/ui/dist ./ui
 
-# Copy built UI
-COPY --from=build-ui --chown=missioncmd:nodejs /app/ui/dist ./ui/dist
+# Copy node_modules for production
+COPY --from=build --chown=nodejs:nodejs /app/packages/mission-command/node_modules ./packages/mission-command/node_modules
 
 # Set environment
 ENV NODE_ENV=production
 ENV PORT=4111
-ENV HOSTNAME="0.0.0.0"
+ENV UI_PORT=3000
 
 # Switch to non-root user
-USER missioncmd
+USER nodejs
 
-# Expose port
-EXPOSE 4111
+# Expose ports
+EXPOSE 4111 3000
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:4111/webhooks/github/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:4111/webhooks/github/health || exit 1
 
 # Run the application
-ENTRYPOINT ["dumb-init", "--"]
-CMD ["node", "dist/index.js"]
+CMD ["node", "packages/mission-command/dist/server/index.js"]
