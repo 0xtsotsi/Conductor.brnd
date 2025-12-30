@@ -12,6 +12,9 @@ export function Navigation({ currentUserRole }: NavigationProps) {
     { path: '/', label: 'Catalog', accessibleTo: ['admin', 'operator', 'viewer'] as MissionCommandRole[] },
     { path: '/runs', label: 'Mission Runs', accessibleTo: ['admin', 'operator', 'viewer'] as MissionCommandRole[] },
     { path: '/approvals', label: 'Approvals', accessibleTo: ['admin', 'operator'] as MissionCommandRole[] },
+    { path: '/profile', label: 'Profile', accessibleTo: ['admin', 'operator', 'viewer'] as MissionCommandRole[] },
+    { path: '/audit', label: 'Audit Logs', accessibleTo: ['admin'] as MissionCommandRole[] },
+    { path: '/admin/users', label: 'User Management', accessibleTo: ['admin'] as MissionCommandRole[] },
   ];
 
   const accessibleNavItems = navItems.filter(item =>

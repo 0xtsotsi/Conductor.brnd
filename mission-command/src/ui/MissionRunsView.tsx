@@ -162,7 +162,7 @@ export function MissionRunsView({ currentUserRole }: MissionRunsViewProps) {
           </p>
         </div>
       ) : (
-        /* Runs List */}
+        /* Runs List */
         <div className="space-y-4">
           {filteredRuns.map((run) => (
             <RunCard

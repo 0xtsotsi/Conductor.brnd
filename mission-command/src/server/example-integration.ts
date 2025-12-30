@@ -1,8 +1,8 @@
 /**
  * Mission Command Server Integration Example
  *
- * This file shows how to integrate the OAuth handler and user management API
- * into a Mastra server instance.
+ * This file shows how to integrate the OAuth handler, user management API,
+ * and audit logging system into a Mastra server instance.
  *
  * Setup:
  * 1. Configure environment variables (see .env.example)
@@ -12,25 +12,51 @@
 
 import { Mastra } from '@mastra/core';
 import { MissionCommandAuth } from '@mastra/auth';
+import { Hono } from 'hono';
 import { createOAuthHandler } from './oauth-handler';
 import { createUsersAPI } from './users-api';
 import { createLibSQLUserStorage, runUserMigration } from './user-storage';
-import { createLibsqlStore } from '@mastra/storage-libsql';
+import { LibSQLStore } from '@mastra/libsql';
+import { createAuditService } from '../auth/audit-service';
+import { createClient } from '@libsql/client';
+import { createAuditMiddlewareStack } from './audit-middleware';
+import { createAuditAPI } from './audit-api';
+import { PgWorkflowStorage, runWorkflowDefinitionsMigration } from './workflow-storage';
 
 /**
- * Create Mission Command server with OAuth authentication
+ * Create Mission Command server with OAuth authentication and audit logging
  */
 export async function createMissionCommandServer() {
   // Initialize LibSQL storage
-  const storage = createLibsqlStore({
-    url: process.env.LIBSQL_URL || 'file:mission-command.db',
+  const storage = new LibSQLStore({
+      id: 'mission-command',
+      url: process.env.LIBSQL_URL || 'file:mission-command.db',
+    });
+
+  // Create direct LibSQL client for migrations
+  const dbUrl = process.env.LIBSQL_URL || 'file:mission-command.db';
+  const client = createClient({
+    url: dbUrl,
   });
 
   // Run user migration to create table
-  await runUserMigration(storage);
+  await runUserMigration(client);
+
+  // Skip workflow definitions migration (PostgreSQL-specific SQL not compatible with LibSQL)
+  // await runWorkflowDefinitionsMigration(client);
 
   // Create user storage adapter
-  const userStorage = createLibSQLUserStorage(storage);
+  const userStorage = createLibSQLUserStorage(client);
+
+  // Skip workflow storage (PostgreSQL-specific, not compatible with LibSQL)
+  // const workflowStorage = new PgWorkflowStorage(client);
+
+  // Create audit service
+  const auditService = createAuditService({
+    storage: userStorage,
+    retentionDays: 90,
+    logger: console,
+  });
 
   // Create OAuth handler
   const oauthHandler = createOAuthHandler({
@@ -53,6 +79,20 @@ export async function createMissionCommandServer() {
     storage: userStorage,
   });
 
+  // Create audit API
+  const auditAPI = createAuditAPI({
+    auditService,
+  });
+
+  // Create audit middleware stack
+  const auditMiddleware = createAuditMiddlewareStack({
+    auditService,
+    logSuccess: true,
+    logFailure: true,
+    logBody: false,
+    excludePaths: ['/health', '/metrics'],
+  });
+
   // Create Mission Command auth
   const auth = new MissionCommandAuth({
     secret: process.env.JWT_AUTH_SECRET || 'your-secret-key',
@@ -64,16 +104,23 @@ export async function createMissionCommandServer() {
     storage,
   });
 
-  // Get Hono app
-  const app = mastra.getServer();
+  // Create Hono app directly
+  const app = new Hono();
+
+  // Apply audit middleware to all API routes
+  app.use('/api/*', auditMiddleware);
 
   // Mount OAuth handler
-  app.route('/', oauthHandler);
+  app.route('/api/auth', oauthHandler);
 
   // Mount user management API
-  app.route('/', usersAPI);
+  app.route('/api/users', usersAPI);
 
-  return mastra;
+  // Mount audit API
+  app.route('/api/audit', auditAPI);
+
+  // Return both mastra instance and app
+  return { mastra, app };
 }
 
 /**

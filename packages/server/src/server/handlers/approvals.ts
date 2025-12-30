@@ -4,13 +4,18 @@ import { createRoute } from '../server-adapter/routes/route-builder';
 import type { Context } from '../types';
 import { handleError } from './error';
 import {
-  runIdSchema,
+  workflowRunPathParams,
   workflowIdPathParams,
   listWorkflowRunsQuerySchema,
   workflowRunsResponseSchema,
   workflowControlResponseSchema,
   resumeBodySchema,
 } from '../schemas/workflows';
+
+// Schema for routes that only need runId (not workflowId)
+const runIdPathParams = z.object({
+  runId: z.string().describe('Unique identifier for the workflow run'),
+});
 
 export interface ApprovalContext extends Context {
   runId?: string;
@@ -112,7 +117,7 @@ export const APPROVE_RUN_ROUTE = createRoute({
   method: 'POST',
   path: '/api/approvals/:runId/approve',
   responseType: 'json',
-  pathParamSchema: runIdSchema,
+  pathParamSchema: runIdPathParams,
   bodySchema: resumeBodySchema.partial().extend({
     resumeData: z
       .object({
@@ -195,7 +200,7 @@ export const DECLINE_RUN_ROUTE = createRoute({
   method: 'POST',
   path: '/api/approvals/:runId/decline',
   responseType: 'json',
-  pathParamSchema: runIdSchema,
+  pathParamSchema: runIdPathParams,
   bodySchema: resumeBodySchema.partial().extend({
     resumeData: z
       .object({
@@ -278,7 +283,7 @@ export const GET_APPROVAL_ROUTE = createRoute({
   method: 'GET',
   path: '/api/approvals/:runId',
   responseType: 'json',
-  pathParamSchema: runIdSchema,
+  pathParamSchema: runIdPathParams,
   responseSchema: z.object({
     runId: z.string(),
     workflowId: z.string(),

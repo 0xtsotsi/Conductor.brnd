@@ -7,7 +7,6 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { useMastraClient } from '@mastra/react';
-import { WorkflowGraph, WorkflowInformation, WorkflowLayout } from '@mastra/playground-ui/domains/workflows';
 import { MissionCommandRole } from '@mastra/auth';
 import { GetWorkflowResponse } from '@mastra/client-js';
 
@@ -55,9 +54,9 @@ export function WorkflowDetailView({
           ← Back
         </button>
         <div className="flex-1">
-          <h1 className="text-2xl font-bold">{workflow?.name || workflowId}</h1>
-          {workflow?.description && (
-            <p className="text-muted-foreground">{workflow.description}</p>
+          <h1 className="text-2xl font-bold">{(workflow as any)?.name || workflowId}</h1>
+          {(workflow as any)?.description && (
+            <p className="text-muted-foreground">{(workflow as any).description}</p>
           )}
         </div>
         <div className="flex gap-2">
@@ -80,29 +79,20 @@ export function WorkflowDetailView({
         </div>
       </div>
 
-      {/* Workflow Graph Visualization */}
-      <div className="mb-6">
-        <h2 className="text-xl font-semibold mb-4">Workflow Graph</h2>
-        <WorkflowGraph
-          workflowId={workflowId}
-          workflow={workflow}
-          isLoading={isLoading}
-        />
-      </div>
-
-      {/* Workflow Information */}
-      {workflow && (
-        <WorkflowLayout
-          workflowId={workflowId}
-          leftSlot={
-            <div className="p-4">
-              <h3 className="text-lg font-semibold mb-4">Details</h3>
-              <WorkflowInformation workflow={workflow} />
-            </div>
-          }
-        >
-          <div></div>
-        </WorkflowLayout>
+      {/* Workflow Details */}
+      {isLoading ? (
+        <div className="text-center py-8">Loading workflow details...</div>
+      ) : workflow ? (
+        <div className="border rounded-lg p-6">
+          <h2 className="text-xl font-semibold mb-4">Workflow Details</h2>
+          <pre className="bg-muted p-4 rounded overflow-auto">
+            {JSON.stringify(workflow, null, 2)}
+          </pre>
+        </div>
+      ) : (
+        <div className="text-center py-8 text-muted-foreground">
+          Workflow not found
+        </div>
       )}
     </div>
   );

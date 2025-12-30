@@ -13,6 +13,10 @@
       "types": "./src/tools/github-tools.ts",
       "import": "./src/tools/github-tools.ts"
     },
+    "./agents": {
+      "types": "./src/agents/index.ts",
+      "import": "./src/agents/index.ts"
+    },
     "./workflows": {
       "types": "./src/workflows/index.ts",
       "import": "./src/workflows/index.ts"
@@ -30,9 +34,16 @@
     "test": "vitest",
     "test:watch": "vitest --watch",
     "test:ui": "vitest --ui",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:debug": "playwright test --debug",
+    "test:e2e:install": "playwright install --with-deps",
+    "test:e2e:report": "playwright show-report",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src --ext .ts",
-    "format": "prettier --write \"src/**/*.ts\""
+    "format": "prettier --write \"src/**/*.ts\"",
+    "db:init": "node scripts/init-db.mjs",
+    "db:status": "node -e \"console.log(require('fs').readFileSync('/home/oxtsotsi/Webrnds/Conductor-brnd/mission-command/.env', 'utf8').match(/DATABASE_URL=.*/)[0].replace(/:[^:@]+@/, ':****@'))\""
   },
   "keywords": [
     "mastra",
@@ -48,20 +59,26 @@
   "author": "Mission Command Centre",
   "license": "MIT",
   "dependencies": {
+    "@hono/node-server": "^1.19.6",
+    "@hono/oauth-providers": "^0.8.5",
+    "@libsql/client": "^0.15.15",
     "@mastra/auth": "workspace:*",
     "@mastra/core": "workspace:*",
     "@mastra/playground-ui": "workspace:*",
     "@mastra/react": "workspace:*",
     "@tanstack/react-query": "^5.62.0",
+    "hono": "^4.10.6",
+    "jose": "^6.1.2",
     "react": "^19.0.0",
-    "zod": "^3.22.4"
+    "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@playwright/test": "^1.57.0",
     "@types/node": "^22.10.5",
-    "typescript": "^5.7.3",
-    "vitest": "^3.0.5",
     "eslint": "^9.18.0",
-    "prettier": "^3.4.2"
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
   },
   "engines": {
     "node": ">=18.0.0"

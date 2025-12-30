@@ -168,7 +168,9 @@ export function DataTable<TData, TValue>({
                         showBorders && 'border-r last:border-r-0'
                       )}
                       onClick={
-                        enableSorting && header.column.getToggleSortingHandler()
+                        enableSorting && header.column.getCanSort()
+                          ? header.column.getToggleSortingHandler() || undefined
+                          : undefined
                       }
                     >
                       {header.isPlaceholder

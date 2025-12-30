@@ -15,6 +15,14 @@ build/
 coverage/
 .nyc_output/
 
+# E2E Test Results
+test-results/
+playwright-report/
+playwright/.cache/
+
+# E2E Environment
+.env.e2e
+
 # IDE
 .vscode/
 .idea/
