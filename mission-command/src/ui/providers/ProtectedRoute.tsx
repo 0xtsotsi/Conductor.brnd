@@ -6,7 +6,7 @@
  * if role is insufficient.
  */
 
-import { Navigate, useLocation } from 'react-router-dom';
+import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from './AuthProvider';
 import type { MissionCommandRole } from '@mastra/auth';
 
@@ -83,6 +83,7 @@ export function ProtectedRoute({
  */
 export function UnauthorizedPage() {
   const { user, role } = useAuth();
+  const navigate = useNavigate();
   const location = useLocation();
   const state = location.state as {
     reason?: string;
@@ -154,7 +155,7 @@ export function UnauthorizedPage() {
 
         <div className="flex justify-center gap-3">
           <button
-            onClick={() => (window.location.href = '/')}
+            onClick={() => navigate('/')}
             className="rounded-md bg-gray-600 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700"
           >
             Go Home
@@ -194,7 +195,7 @@ export function LoginPage() {
 
         <div className="space-y-4">
           <button
-            onClick={() => login('github')}
+            onClick={() => login('github', { redirectUri: from })}
             className="flex w-full items-center justify-center gap-3 rounded-md border border-gray-300 bg-white px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50"
           >
             <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
@@ -208,7 +209,7 @@ export function LoginPage() {
           </button>
 
           <button
-            onClick={() => login('google')}
+            onClick={() => login('google', { redirectUri: from })}
             className="flex w-full items-center justify-center gap-3 rounded-md border border-gray-300 bg-white px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50"
           >
             <svg className="h-5 w-5" viewBox="0 0 24 24">

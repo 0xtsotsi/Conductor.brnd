@@ -7,7 +7,7 @@
  * Copy this pattern to your Vite app's main App.tsx file.
  */
 
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MastraReactProvider } from '@mastra/react';
 import { AuthProvider, useAuth } from './providers/AuthProvider';
@@ -88,24 +88,24 @@ function DashboardLayout() {
 
           {/* Navigation */}
           <nav className="mt-4 flex gap-4 border-t pt-4">
-            <a
-              href="/"
+            <Link
+              to="/"
               className="text-sm font-medium text-gray-700 hover:text-gray-900"
             >
               Catalog
-            </a>
-            <a
-              href="/approvals"
+            </Link>
+            <Link
+              to="/approvals"
               className="text-sm font-medium text-gray-700 hover:text-gray-900"
             >
               Approval Queue
-            </a>
-            <a
-              href="/runs"
+            </Link>
+            <Link
+              to="/runs"
               className="text-sm font-medium text-gray-700 hover:text-gray-900"
             >
               Mission Runs
-            </a>
+            </Link>
           </nav>
         </div>
       </header>
@@ -118,11 +118,13 @@ function DashboardLayout() {
             path="/"
             element={
               <ProtectedRoute>
-                <CatalogView
-                  onWorkflowSelect={(id) => console.log('Selected:', id)}
-                  onWorkflowCreate={() => console.log('Create workflow')}
-                  currentUserRole={role!}
-                />
+                {role && (
+                  <CatalogView
+                    onWorkflowSelect={(id) => console.log('Selected:', id)}
+                    onWorkflowCreate={() => console.log('Create workflow')}
+                    currentUserRole={role}
+                  />
+                )}
               </ProtectedRoute>
             }
           />
@@ -132,11 +134,13 @@ function DashboardLayout() {
             path="/workflow/:workflowId"
             element={
               <ProtectedRoute>
-                <WorkflowDetailView
-                  workflowId="placeholder"
-                  onBack={() => console.log('Back to catalog')}
-                  currentUserRole={role!}
-                />
+                {role && (
+                  <WorkflowDetailView
+                    workflowId="placeholder"
+                    onBack={() => console.log('Back to catalog')}
+                    currentUserRole={role}
+                  />
+                )}
               </ProtectedRoute>
             }
           />
@@ -146,11 +150,13 @@ function DashboardLayout() {
             path="/workflow/new"
             element={
               <ProtectedRoute requireRole={['admin', 'operator']}>
-                <CreateWorkflowView
-                  onCancel={() => console.log('Cancel')}
-                  onSave={(config) => console.log('Save:', config)}
-                  currentUserRole={role!}
-                />
+                {role && (
+                  <CreateWorkflowView
+                    onCancel={() => console.log('Cancel')}
+                    onSave={(config) => console.log('Save:', config)}
+                    currentUserRole={role}
+                  />
+                )}
               </ProtectedRoute>
             }
           />
@@ -160,7 +166,7 @@ function DashboardLayout() {
             path="/approvals"
             element={
               <ProtectedRoute requireRole={['admin', 'operator']}>
-                <ApprovalQueueView currentUserRole={role!} />
+                {role && <ApprovalQueueView currentUserRole={role} />}
               </ProtectedRoute>
             }
           />
@@ -170,11 +176,13 @@ function DashboardLayout() {
             path="/runs"
             element={
               <ProtectedRoute>
-                <MissionRunsView
-                  workflowId="placeholder"
-                  onRunSelect={(runId) => console.log('Selected run:', runId)}
-                  currentUserRole={role!}
-                />
+                {role && (
+                  <MissionRunsView
+                    workflowId="placeholder"
+                    onRunSelect={(runId) => console.log('Selected run:', runId)}
+                    currentUserRole={role}
+                  />
+                )}
               </ProtectedRoute>
             }
           />

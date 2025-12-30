@@ -30,7 +30,7 @@ export interface AuthContextValue {
   /**
    * Login function - initiates OAuth flow
    */
-  login: (provider?: 'github' | 'google' | 'keycloak') => void;
+  login: (provider?: 'github' | 'google' | 'keycloak', options?: { redirectUri?: string }) => void;
 
   /**
    * Logout function - clears JWT and redirects
@@ -107,7 +107,7 @@ function getJWT(): string | null {
   if (token) return token;
 
   // Try cookie
-  const match = document.cookie.match(/(^|;)\\s*mastra_jwt\\s*=\\s*([^;]+)/);
+  const match = document.cookie.match(/(^|;)\s*mastra_jwt\s*=\s*([^;]+)/);
   return match ? match[2] : null;
 }
 
@@ -170,7 +170,7 @@ export function AuthProvider({ children, apiUrl = '/api', loginUrl = '/api/auth/
       email: payload.email,
       name: payload.name,
       role: payload.role || 'viewer',
-      permissions: payload.permissions as any,
+      permissions: payload.permissions as MissionCommandUser['permissions'],
     };
 
     setUser(userObj);
@@ -198,8 +198,8 @@ export function AuthProvider({ children, apiUrl = '/api', loginUrl = '/api/auth/
   /**
    * Login - redirect to OAuth provider
    */
-  const login = (provider?: 'github' | 'google' | 'keycloak') => {
-    const redirectUrl = window.location.pathname + window.location.search;
+  const login = (provider?: 'github' | 'google' | 'keycloak', options?: { redirectUri?: string }) => {
+    const redirectUrl = options?.redirectUri || window.location.pathname + window.location.search;
     const loginParams = new URLSearchParams({
       redirect_uri: redirectUrl,
       ...(provider && { provider }),
