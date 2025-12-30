@@ -9,6 +9,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import type { OAuthStorage } from './oauth-handler';
 import { requireRole, requirePermission } from '@mastra/auth/rbac-middleware';
+import { requireAuth } from './jwt-middleware';
 import type { MissionCommandUser } from '@mastra/auth';
 
 export interface UsersAPIOptions {
@@ -45,6 +46,10 @@ export function createUsersAPI(options: UsersAPIOptions) {
   const app = new Hono();
 
   const { storage } = options;
+
+  // Apply JWT authentication middleware to all routes
+  app.use('/api/users/*', requireAuth());
+  app.use('/api/audit-logs', requireAuth());
 
   /**
    * Helper: Extract user from context

@@ -3,14 +3,11 @@
  *
  * Automatically cleans up expired/abandoned data.
  * Can be run as cron jobs or manually via API endpoints.
- */
- *
  * Automatically cleans up expired/abandoned suspended workflow runs.
  * Can be run as a cron job or manually via API endpoint.
  */
 
 import type { SuspendedRunsStorage } from './suspended-runs-storage';
-import type { OAuthStorage } from './oauth-handler';
 import type { OAuthStorage } from './oauth-handler';
 
 /**
@@ -123,10 +120,6 @@ export class CleanupJob {
 
       return result;
     } catch (error) {
-      this.logger.error('Cleanup failed:', error);
-      throw error;
-    }
-  } catch (error) {
       this.logger.error('Cleanup failed:', error);
       throw error;
     }
