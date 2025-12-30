@@ -4,6 +4,8 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 import { LoginPage } from './pages/LoginPage';
 import { AuthCallbackPage } from './pages/AuthCallbackPage';
 import { AuditLogPage } from './pages/AuditLogPage';
+import { UsersManagementPage } from './pages/UsersManagementPage';
+import { ProfilePage } from './pages/ProfilePage';
 import { useAuth } from './providers/AuthProvider';
 import { MissionCommandRole } from '@mastra/auth';
 
@@ -117,6 +119,26 @@ function AppContent() {
             element={
               <ProtectedRoute requiredRole="admin">
                 <AuditLogPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* User Management - requires admin role */}
+          <Route
+            path="/admin/users"
+            element={
+              <ProtectedRoute requiredRole="admin">
+                <UsersManagementPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Profile - accessible to all authenticated users */}
+          <Route
+            path="/profile"
+            element={
+              <ProtectedRoute requiredRole="viewer">
+                <ProfilePage />
               </ProtectedRoute>
             }
           />
