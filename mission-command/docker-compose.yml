@@ -1,0 +1,133 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: mission-command-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: mission_command
+      POSTGRES_PASSWORD: mission_command_password
+      POSTGRES_DB: mission_command_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mission_command"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - mission-command-network
+
+  # Mission Command Server
+  server:
+    build:
+      context: ..
+      dockerfile: mission-command/Dockerfile
+    container_name: mission-command-server
+    restart: unless-stopped
+    ports:
+      - "4111:4111"
+      - "3000:3000"
+    environment:
+      # Database
+      DATABASE_URL: postgresql://mission_command:mission_command_password@postgres:5432/mission_command_db
+
+      # GitHub
+      GITHUB_TOKEN: ${GITHUB_TOKEN}
+      GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET}
+
+      # Server
+      NODE_ENV: production
+      PORT: 4111
+
+      # JWT & Auth
+      JWT_SECRET: ${JWT_SECRET}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET}
+      GITHUB_CALLBACK_URL: http://localhost:4111/auth/github/callback
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      GOOGLE_CALLBACK_URL: http://localhost:4111/auth/google/callback
+      ADMIN_EMAILS: ${ADMIN_EMAILS}
+      ADMIN_DOMAINS: ${ADMIN_DOMAINS}
+
+      # Cleanup
+      CLEANUP_INTERVAL_MS: 3600000
+      RATE_LIMIT_CLEANUP_INTERVAL_MS: 60000
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4111/webhooks/github/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 40s
+      retries: 3
+    networks:
+      - mission-command-network
+    volumes:
+      - server_logs:/app/logs
+
+  # Nginx Reverse Proxy (optional)
+  nginx:
+    image: nginx:alpine
+    container_name: mission-command-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - server
+    networks:
+      - mission-command-network
+
+  # Prometheus Monitoring (optional)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: mission-command-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    networks:
+      - mission-command-network
+
+  # Grafana Dashboards (optional)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: mission-command-grafana
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+    networks:
+      - mission-command-network
+
+volumes:
+  postgres_data:
+    driver: local
+  server_logs:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+
+networks:
+  mission-command-network:
+    driver: bridge
