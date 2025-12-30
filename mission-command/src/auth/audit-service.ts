@@ -267,8 +267,11 @@ export class AuditService {
         userId: event.userId,
         action: event.action,
         resource: event.resource,
+        resourceId: event.resourceId,
         details: sanitizedDetails,
         ipAddress: event.ipAddress,
+        success: event.success,
+        errorMessage: event.errorMessage,
         createdAt: new Date(),
       });
 

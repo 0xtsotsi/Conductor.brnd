@@ -58,7 +58,7 @@ export const githubCreateBranch = createTool({
     ref: z.string().optional(),
     sha: z.string().optional(),
   }),
-  execute: async ({ inputData }) => {
+  execute: async (inputData) => {
     const { owner, repo, branchName, baseBranch } = inputData;
     const token = process.env.GITHUB_TOKEN;
 
@@ -126,7 +126,7 @@ export const githubCreatePR = createTool({
     htmlUrl: z.string(),
     state: z.string(),
   }),
-  execute: async ({ inputData }) => {
+  execute: async (inputData) => {
     const { owner, repo, title, body, head, base } = inputData;
     const token = process.env.GITHUB_TOKEN;
 
@@ -186,7 +186,7 @@ export const githubGetDiff = createTool({
     additions: z.number(),
     deletions: z.number(),
   }),
-  execute: async ({ inputData }) => {
+  execute: async (inputData) => {
     const { owner, repo, prNumber } = inputData;
     const token = process.env.GITHUB_TOKEN;
 
@@ -253,7 +253,7 @@ export const githubMergePR = createTool({
     sha: z.string().optional(),
     message: z.string(),
   }),
-  execute: async ({ inputData }) => {
+  execute: async (inputData) => {
     const { owner, repo, prNumber, mergeMethod, commitTitle, commitMessage } = inputData;
     const token = process.env.GITHUB_TOKEN;
 
@@ -318,7 +318,7 @@ export const githubPostComment = createTool({
     htmlUrl: z.string(),
     createdAt: z.string(),
   }),
-  execute: async ({ inputData }) => {
+  execute: async (inputData) => {
     const { owner, repo, prNumber, body } = inputData;
     const token = process.env.GITHUB_TOKEN;
 

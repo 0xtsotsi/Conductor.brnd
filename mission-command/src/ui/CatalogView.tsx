@@ -7,7 +7,6 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { useMastraClient } from '@mastra/react';
-import { WorkflowTable } from '@mastra/playground-ui/domains/workflows';
 import { MissionCommandRole } from '@mastra/auth';
 
 export type CatalogViewProps = {
@@ -59,11 +58,29 @@ export function CatalogView({
         )}
       </div>
 
-      {/* Workflow Table - handles its own search/filter */}
-      <WorkflowTable
-        workflows={workflows ?? {}}
-        isLoading={isLoading}
-      />
+      {/* Workflow Table */}
+      {isLoading ? (
+        <div className="text-center py-8">Loading workflows...</div>
+      ) : workflows && Object.keys(workflows).length > 0 ? (
+        <div className="grid gap-4">
+          {Object.entries(workflows).map(([name, workflow]: [string, any]) => (
+            <div
+              key={name}
+              className="border rounded-lg p-4 hover:bg-muted/50 cursor-pointer"
+              onClick={() => onWorkflowSelect(name)}
+            >
+              <h3 className="font-semibold">{name}</h3>
+              <p className="text-sm text-muted-foreground">
+                {(workflow as any)?.description || 'No description'}
+              </p>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="text-center py-8 text-muted-foreground">
+          No workflows found. Create your first workflow to get started.
+        </div>
+      )}
     </div>
   );
 }

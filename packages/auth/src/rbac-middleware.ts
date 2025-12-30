@@ -1,5 +1,4 @@
 import type { MiddlewareHandler, Context } from 'hono';
-import type { ContextWithMastra } from '@mastra/core/server';
 import type {
   MissionCommandUser,
   MissionCommandPermission,

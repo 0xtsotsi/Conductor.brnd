@@ -41,7 +41,9 @@
     "test:e2e:report": "playwright show-report",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src --ext .ts",
-    "format": "prettier --write \"src/**/*.ts\""
+    "format": "prettier --write \"src/**/*.ts\"",
+    "db:init": "node scripts/init-db.mjs",
+    "db:status": "node -e \"console.log(require('fs').readFileSync('/home/oxtsotsi/Webrnds/Conductor-brnd/mission-command/.env', 'utf8').match(/DATABASE_URL=.*/)[0].replace(/:[^:@]+@/, ':****@'))\""
   },
   "keywords": [
     "mastra",
@@ -62,6 +64,7 @@
     "@mastra/playground-ui": "workspace:*",
     "@mastra/react": "workspace:*",
     "@tanstack/react-query": "^5.62.0",
+    "hono": "^4.0.0",
     "react": "^19.0.0",
     "zod": "^3.22.4"
   },

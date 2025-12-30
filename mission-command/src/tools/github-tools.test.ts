@@ -31,14 +31,15 @@ describe('GitHub Tools', () => {
           json: async () => mockNewBranch,
         });
 
-      const result = await githubCreateBranch.execute({
-        inputData: {
+      const result = await githubCreateBranch.execute(
+        {
           owner: 'test-owner',
           repo: 'test-repo',
           branchName: 'feature/test-branch',
           baseBranch: 'main',
         },
-      });
+        {}
+      );
 
       expect(result.success).toBe(true);
       expect(result.branchName).toBe('feature/test-branch');
@@ -50,14 +51,15 @@ describe('GitHub Tools', () => {
       delete process.env.GITHUB_TOKEN;
 
       await expect(
-        githubCreateBranch.execute({
-          inputData: {
+        githubCreateBranch.execute(
+          {
             owner: 'test-owner',
             repo: 'test-repo',
             branchName: 'feature/test',
             baseBranch: 'main',
           },
-        })
+          {}
+        )
       ).rejects.toThrow('GITHUB_TOKEN environment variable is required');
     });
   });
@@ -76,8 +78,8 @@ describe('GitHub Tools', () => {
         json: async () => mockPR,
       });
 
-      const result = await githubCreatePR.execute({
-        inputData: {
+      const result = await githubCreatePR.execute(
+        {
           owner: 'test-owner',
           repo: 'test-repo',
           title: 'Test PR',
@@ -85,7 +87,8 @@ describe('GitHub Tools', () => {
           head: 'feature/test',
           base: 'main',
         },
-      });
+        {}
+      );
 
       expect(result.success).toBe(true);
       expect(result.prNumber).toBe(123);
@@ -116,13 +119,14 @@ describe('GitHub Tools', () => {
           text: async () => mockDiff,
         });
 
-      const result = await githubGetDiff.execute({
-        inputData: {
+      const result = await githubGetDiff.execute(
+        {
           owner: 'test-owner',
           repo: 'test-repo',
           prNumber: 123,
         },
-      });
+        {}
+      );
 
       expect(result.success).toBe(true);
       expect(result.prNumber).toBe(123);
@@ -146,14 +150,15 @@ describe('GitHub Tools', () => {
         json: async () => mockMergeResult,
       });
 
-      const result = await githubMergePR.execute({
-        inputData: {
+      const result = await githubMergePR.execute(
+        {
           owner: 'test-owner',
           repo: 'test-repo',
           prNumber: 123,
           mergeMethod: 'merge',
         },
-      });
+        {}
+      );
 
       expect(result.success).toBe(true);
       expect(result.merged).toBe(true);
@@ -173,8 +178,8 @@ describe('GitHub Tools', () => {
         json: async () => mockMergeResult,
       });
 
-      const result = await githubMergePR.execute({
-        inputData: {
+      const result = await githubMergePR.execute(
+        {
           owner: 'test-owner',
           repo: 'test-repo',
           prNumber: 123,
@@ -182,7 +187,8 @@ describe('GitHub Tools', () => {
           commitTitle: 'Custom title',
           commitMessage: 'Custom message',
         },
-      });
+        {}
+      );
 
       expect(result.success).toBe(true);
       expect(result.merged).toBe(true);
@@ -202,14 +208,15 @@ describe('GitHub Tools', () => {
         json: async () => mockComment,
       });
 
-      const result = await githubPostComment.execute({
-        inputData: {
+      const result = await githubPostComment.execute(
+        {
           owner: 'test-owner',
           repo: 'test-repo',
           prNumber: 123,
           body: 'Test comment',
         },
-      });
+        {}
+      );
 
       expect(result.success).toBe(true);
       expect(result.commentId).toBe(456);
@@ -230,14 +237,15 @@ describe('GitHub Tools', () => {
       });
 
       const markdownBody = '# Heading\n\n**Bold** and *italic* text';
-      const result = await githubPostComment.execute({
-        inputData: {
+      const result = await githubPostComment.execute(
+        {
           owner: 'test-owner',
           repo: 'test-repo',
           prNumber: 123,
           body: markdownBody,
         },
-      });
+        {}
+      );
 
       expect(result.success).toBe(true);
     });

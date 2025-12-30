@@ -239,15 +239,16 @@ export function createGitHubWebhookRouter() {
       });
 
       // Extract PR details
-      const { owner, repo } = payload.repository;
+      const repositoryOwner = payload.repository.owner.login;
+      const repositoryName = payload.repository.name;
       const prNumber = payload.pull_request.number;
       const prUrl = payload.pull_request.html_url;
 
       // Find suspended workflow run
-      const suspendedRun = await findSuspendedRun(owner.login, repo.name, prNumber);
+      const suspendedRun = await findSuspendedRun(repositoryOwner, repositoryName, prNumber);
 
       if (!suspendedRun) {
-        logger.info(`No suspended run found for PR #${prNumber} in ${owner.login}/${repo.name}`);
+        logger.info(`No suspended run found for PR #${prNumber} in ${repositoryOwner}/${repositoryName}`);
         // Return 200 anyway (webhook was received, just no action taken)
         return c.json({ message: 'Webhook received, no action taken' }, 200);
       }
@@ -299,7 +300,7 @@ export function createGitHubWebhookRouter() {
         });
 
         // Remove from suspended runs after successful resume
-        await removeSuspendedRun(owner.login, repo.name, prNumber);
+        await removeSuspendedRun(repositoryOwner, repositoryName, prNumber);
 
         logger.info(`Workflow run ${suspendedRun.runId} resumed successfully`);
       }

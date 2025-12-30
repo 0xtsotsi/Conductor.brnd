@@ -11,7 +11,7 @@ import {
   redactPII,
   extractIpAddress,
   extractUserAgent,
-} from '../audit-service';
+} from './audit-service';
 import type { OAuthStorage } from '../../server/oauth-handler';
 import type { MissionCommandUser } from '@mastra/auth';
 
@@ -511,10 +511,9 @@ describe('Helper Functions', () => {
     it('should extract IP from x-forwarded-for header', () => {
       const c = {
         req: {
-          header: vi.fn((key: string) => {
-            if (key === 'x-forwarded-for') return '192.168.1.1, 10.0.0.1';
-            return undefined;
-          }),
+          header: vi.fn(() => ({
+            'x-forwarded-for': '192.168.1.1, 10.0.0.1',
+          })),
         },
       };
 
@@ -525,10 +524,9 @@ describe('Helper Functions', () => {
     it('should extract IP from x-real-ip header', () => {
       const c = {
         req: {
-          header: vi.fn((key: string) => {
-            if (key === 'x-real-ip') return '192.168.1.1';
-            return undefined;
-          }),
+          header: vi.fn(() => ({
+            'x-real-ip': '192.168.1.1',
+          })),
         },
       };
 
@@ -552,10 +550,9 @@ describe('Helper Functions', () => {
     it('should extract user agent from header', () => {
       const c = {
         req: {
-          header: vi.fn((key: string) => {
-            if (key === 'user-agent') return 'Mozilla/5.0 ...';
-            return undefined;
-          }),
+          header: vi.fn(() => ({
+            'user-agent': 'Mozilla/5.0 ...',
+          })),
         },
       };
 
