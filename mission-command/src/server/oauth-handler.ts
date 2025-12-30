@@ -16,10 +16,11 @@
  */
 
 import { Hono } from 'hono';
-import { setCookie } from 'hono/cookie';
+import { setCookie, deleteCookie } from 'hono/cookie';
 import { oauthConfig as githubConfig } from '@hono/oauth-providers/github';
 import { oauthConfig as googleConfig } from '@hono/oauth-providers/google';
-import { SignJWT } from 'jose';
+import { SignJWT, jwtVerify } from 'jose';
+import { createHash, randomBytes } from 'crypto';
 
 /**
  * OAuth user profile from providers
@@ -45,6 +46,20 @@ type MissionCommandUserDB = {
   role: 'admin' | 'operator' | 'viewer';
   created_at: Date;
   updated_at: Date;
+};
+
+/**
+ * Refresh token record
+ */
+type RefreshToken = {
+  id: string;
+  userId: string;
+  tokenHash: string;
+  expiresAt: Date;
+  createdAt: Date;
+  ipAddress?: string;
+  userAgent?: string;
+  familyId?: string; // For "logout from all devices" functionality
 };
 
 /**
@@ -86,6 +101,21 @@ export interface OAuthHandlerOptions {
    * Storage adapter for user persistence
    */
   storage?: OAuthStorage;
+
+  /**
+   * Access token expiration time (default: 15 minutes)
+   */
+  accessTokenExpiration?: string; // e.g., '15m', '1h'
+
+  /**
+   * Refresh token expiration time in days (default: 30 days)
+   */
+  refreshTokenExpirationDays?: number;
+
+  /**
+   * Enable refresh token rotation (default: true)
+   */
+  enableRefreshTokenRotation?: boolean;
 }
 
 /**
@@ -174,6 +204,31 @@ export interface OAuthStorage {
    * Get all audit logs (admin only)
    */
   getAllAuditLogs?(limit?: number, offset?: number): Promise<any[]>;
+
+  /**
+   * Create a refresh token
+   */
+  createRefreshToken?(token: Omit<RefreshToken, 'id' | 'createdAt'>): Promise<RefreshToken>;
+
+  /**
+   * Get refresh token by hash
+   */
+  getRefreshTokenByHash?(tokenHash: string): Promise<RefreshToken | null>;
+
+  /**
+   * Delete refresh token
+   */
+  deleteRefreshToken?(tokenId: string): Promise<void>;
+
+  /**
+   * Delete all refresh tokens for a user (logout from all devices)
+   */
+  deleteAllRefreshTokens?(userId: string, familyId?: string): Promise<number>;
+
+  /**
+   * Clean up expired refresh tokens
+   */
+  cleanupExpiredRefreshTokens?(): Promise<number>;
 }
 
 /**
@@ -189,10 +244,13 @@ export function createOAuthHandler(options: OAuthHandlerOptions) {
     google,
     defaultRole = 'viewer',
     storage,
+    accessTokenExpiration = '15m',
+    refreshTokenExpirationDays = 30,
+    enableRefreshTokenRotation = true,
   } = options;
 
   /**
-   * Helper: Generate JWT token for user
+   * Helper: Generate JWT access token for user
    */
   async function generateToken(user: MissionCommandUserDB): Promise<string> {
     const secret = new TextEncoder().encode(jwtSecret);
@@ -203,13 +261,65 @@ export function createOAuthHandler(options: OAuthHandlerOptions) {
       name: user.name,
       role: user.role,
       provider: user.provider,
+      type: 'access',
     })
       .setProtectedHeader({ alg: 'HS256' })
       .setIssuedAt()
-      .setExpirationTime('7d') // Token expires in 7 days
+      .setExpirationTime(accessTokenExpiration)
       .sign(secret);
 
     return token;
+  }
+
+  /**
+   * Helper: Generate refresh token
+   */
+  async function generateRefreshToken(userId: string, ipAddress?: string, userAgent?: string, familyId?: string): Promise<string> {
+    // Generate random refresh token
+    const token = randomBytes(32).toString('hex');
+    const tokenHash = createHash('sha256').update(token).digest('hex');
+
+    // Calculate expiration
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + refreshTokenExpirationDays);
+
+    // Store in database if storage is available
+    if (storage?.createRefreshToken) {
+      await storage.createRefreshToken({
+        userId,
+        tokenHash,
+        expiresAt,
+        ipAddress,
+        userAgent,
+        familyId: familyId || randomBytes(16).toString('hex'),
+      });
+    }
+
+    return token;
+  }
+
+  /**
+   * Helper: Verify refresh token and return user ID
+   */
+  async function verifyRefreshToken(token: string): Promise<{ userId: string; tokenId: string } | null> {
+    if (!storage?.getRefreshTokenByHash) {
+      return null; // Storage not configured, no refresh token support
+    }
+
+    const tokenHash = createHash('sha256').update(token).digest('hex');
+    const refreshToken = await storage.getRefreshTokenByHash(tokenHash);
+
+    if (!refreshToken) {
+      return null;
+    }
+
+    // Check if expired
+    if (refreshToken.expiresAt < new Date()) {
+      await storage.deleteRefreshToken?.(refreshToken.id);
+      return null;
+    }
+
+    return { userId: refreshToken.userId, tokenId: refreshToken.id };
   }
 
   /**
@@ -318,7 +428,7 @@ export function createOAuthHandler(options: OAuthHandlerOptions) {
     const redirectUri = c.req.query('redirect_uri') || '/';
 
     // Store redirect URI in state for later
-    const state = Buffer.from(JSON.stringify { redirectUri })).toString('base64');
+    const state = Buffer.from(JSON.stringify({ redirectUri })).toString('base64');
 
     if (provider === 'github') {
       if (!github) {
@@ -393,11 +503,17 @@ export function createOAuthHandler(options: OAuthHandlerOptions) {
           // Get or create user
           const user = await getOrCreateUser(profile);
 
-          // Generate JWT
-          const token = await generateToken(user);
+          // Generate JWT access token
+          const accessToken = await generateToken(user);
 
-          // Redirect to frontend with token
-          return c.redirect(`${frontendUrl}${redirectUri}#token=${token}`);
+          // Generate refresh token
+          const ipAddress = c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || c.req.header('cf-connecting-ip');
+          const userAgent = c.req.header('user-agent');
+          const refreshToken = await generateRefreshToken(user.id, ipAddress, userAgent);
+
+          // Redirect to frontend with both tokens
+          const tokens = Buffer.from(JSON.stringify({ accessToken, refreshToken })).toString('base64');
+          return c.redirect(`${frontendUrl}${redirectUri}#tokens=${tokens}`);
         }
       }
     } catch (error) {
@@ -430,11 +546,17 @@ export function createOAuthHandler(options: OAuthHandlerOptions) {
           // Get or create user
           const user = await getOrCreateUser(profile);
 
-          // Generate JWT
-          const token = await generateToken(user);
+          // Generate JWT access token
+          const accessToken = await generateToken(user);
 
-          // Redirect to frontend with token
-          return c.redirect(`${frontendUrl}${redirectUri}#token=${token}`);
+          // Generate refresh token
+          const ipAddress = c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || c.req.header('cf-connecting-ip');
+          const userAgent = c.req.header('user-agent');
+          const refreshToken = await generateRefreshToken(user.id, ipAddress, userAgent);
+
+          // Redirect to frontend with both tokens
+          const tokens = Buffer.from(JSON.stringify({ accessToken, refreshToken })).toString('base64');
+          return c.redirect(`${frontendUrl}${redirectUri}#tokens=${tokens}`);
         }
       }
     } catch (error) {
@@ -450,13 +572,107 @@ export function createOAuthHandler(options: OAuthHandlerOptions) {
    * POST /api/auth/logout
    */
   app.post('/logout', async (c) => {
+    // Get refresh token from request body
+    const body = await c.req.json().catch(() => ({}));
+    const { refreshToken: refreshTokenStr } = body;
+
+    // Delete refresh token if provided
+    if (refreshTokenStr && storage?.getRefreshTokenByHash && storage?.deleteRefreshToken) {
+      const tokenHash = createHash('sha256').update(refreshTokenStr).digest('hex');
+      const token = await storage.getRefreshTokenByHash(tokenHash);
+      if (token) {
+        await storage.deleteRefreshToken(token.id);
+      }
+    }
+
     // Clear JWT cookie
-    setCookie(c, 'mastra_jwt', '', {
+    deleteCookie(c, 'mastra_jwt', {
       path: '/',
-      maxAge: 0,
     });
 
     return c.json({ success: true });
+  });
+
+  /**
+   * Route: Logout from all devices
+   * POST /api/auth/logout-all
+   */
+  app.post('/logout-all', async (c) => {
+    // Get refresh token from request body to identify user
+    const body = await c.req.json().catch(() => ({}));
+    const { refreshToken: refreshTokenStr } = body;
+
+    if (!refreshTokenStr || !storage?.getRefreshTokenByHash || !storage?.deleteAllRefreshTokens) {
+      return c.json({ error: 'Refresh token required or storage not configured' }, 400);
+    }
+
+    const tokenHash = createHash('sha256').update(refreshTokenStr).digest('hex');
+    const token = await storage.getRefreshTokenByHash(tokenHash);
+
+    if (!token) {
+      return c.json({ error: 'Invalid refresh token' }, 401);
+    }
+
+    // Delete all refresh tokens for this user
+    const deletedCount = await storage.deleteAllRefreshTokens(token.userId);
+
+    // Clear JWT cookie
+    deleteCookie(c, 'mastra_jwt', {
+      path: '/',
+    });
+
+    return c.json({ success: true, deletedCount });
+  });
+
+  /**
+   * Route: Refresh access token
+   * POST /api/auth/refresh
+   */
+  app.post('/refresh', async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    const { refreshToken: refreshTokenStr } = body;
+
+    if (!refreshTokenStr) {
+      return c.json({ error: 'Refresh token required' }, 400);
+    }
+
+    // Verify refresh token
+    const result = await verifyRefreshToken(refreshTokenStr);
+
+    if (!result) {
+      return c.json({ error: 'Invalid or expired refresh token' }, 401);
+    }
+
+    const { userId, tokenId } = result;
+
+    // Get user from database
+    const user = await storage?.getUser(userId);
+
+    if (!user) {
+      return c.json({ error: 'User not found' }, 404);
+    }
+
+    // Generate new access token
+    const accessToken = await generateToken(user);
+
+    // Generate new refresh token (token rotation)
+    let newRefreshToken = refreshTokenStr;
+    if (enableRefreshTokenRotation && storage?.deleteRefreshToken) {
+      // Delete old refresh token
+      await storage.deleteRefreshToken(tokenId);
+
+      // Generate new refresh token
+      const ipAddress = c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || c.req.header('cf-connecting-ip');
+      const userAgent = c.req.header('user-agent');
+      newRefreshToken = await generateRefreshToken(user.id, ipAddress, userAgent);
+    }
+
+    return c.json({
+      accessToken,
+      refreshToken: newRefreshToken,
+      tokenType: 'Bearer',
+      expiresIn: accessTokenExpiration,
+    });
   });
 
   return app;

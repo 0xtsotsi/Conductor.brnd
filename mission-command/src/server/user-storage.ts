@@ -16,6 +16,7 @@ import type { OAuthStorage } from './oauth-handler';
 const TABLE_USERS = 'mission_command_users';
 const TABLE_SESSIONS = 'mission_command_user_sessions';
 const TABLE_AUDIT_LOG = 'mission_command_audit_log';
+const TABLE_REFRESH_TOKENS = 'mission_command_refresh_tokens';
 
 /**
  * User session data
@@ -217,6 +218,24 @@ CREATE TABLE IF NOT EXISTS mission_command_audit_log (
 CREATE INDEX IF NOT EXISTS idx_audit_user_id ON mission_command_audit_log(user_id);
 CREATE INDEX IF NOT EXISTS idx_audit_created_at ON mission_command_audit_log(created_at);
 CREATE INDEX IF NOT EXISTS idx_audit_action ON mission_command_audit_log(action);
+
+-- Refresh tokens table
+CREATE TABLE IF NOT EXISTS mission_command_refresh_tokens (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  token_hash TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  ip_address TEXT,
+  user_agent TEXT,
+  family_id TEXT,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (user_id) REFERENCES mission_command_users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON mission_command_refresh_tokens(user_id);
+CREATE INDEX IF NOT EXISTS idx_refresh_tokens_token_hash ON mission_command_refresh_tokens(token_hash);
+CREATE INDEX IF NOT EXISTS idx_refresh_tokens_expires_at ON mission_command_refresh_tokens(expires_at);
+CREATE INDEX IF NOT EXISTS idx_refresh_tokens_family_id ON mission_command_refresh_tokens(family_id);
 `;
 
 /**
@@ -258,6 +277,17 @@ const AUDIT_LOG_SCHEMA = {
   resource: { type: 'text', nullable: true },
   details: { type: 'jsonb', nullable: true },
   ip_address: { type: 'text', nullable: true },
+  created_at: { type: 'timestamp', nullable: false },
+};
+
+const REFRESH_TOKENS_SCHEMA = {
+  id: { type: 'uuid', primaryKey: true },
+  user_id: { type: 'uuid', nullable: false },
+  token_hash: { type: 'text', nullable: false },
+  expires_at: { type: 'timestamp', nullable: false },
+  ip_address: { type: 'text', nullable: true },
+  user_agent: { type: 'text', nullable: true },
+  family_id: { type: 'text', nullable: true },
   created_at: { type: 'timestamp', nullable: false },
 };
 
@@ -345,6 +375,36 @@ export class PgUserStorage extends PgDB implements OAuthStorage {
       name: 'idx_audit_action_pg',
       table: TABLE_AUDIT_LOG as any,
       columns: ['action'],
+    });
+
+    // Create refresh tokens table
+    await this.createTable({
+      tableName: TABLE_REFRESH_TOKENS as any,
+      schema: REFRESH_TOKENS_SCHEMA,
+    });
+
+    await this.createIndex({
+      name: 'idx_refresh_tokens_user_id_pg',
+      table: TABLE_REFRESH_TOKENS as any,
+      columns: ['user_id'],
+    });
+
+    await this.createIndex({
+      name: 'idx_refresh_tokens_token_hash_pg',
+      table: TABLE_REFRESH_TOKENS as any,
+      columns: ['token_hash'],
+    });
+
+    await this.createIndex({
+      name: 'idx_refresh_tokens_expires_at_pg',
+      table: TABLE_REFRESH_TOKENS as any,
+      columns: ['expires_at'],
+    });
+
+    await this.createIndex({
+      name: 'idx_refresh_tokens_family_id_pg',
+      table: TABLE_REFRESH_TOKENS as any,
+      columns: ['family_id'],
     });
   }
 
@@ -802,5 +862,108 @@ export class PgUserStorage extends PgDB implements OAuthStorage {
     }));
 
     return { sessions, total };
+  }
+
+  /**
+   * Create a refresh token
+   */
+  async createRefreshToken(token: {
+    userId: string;
+    tokenHash: string;
+    expiresAt: Date;
+    ipAddress?: string;
+    userAgent?: string;
+    familyId?: string;
+  }): Promise<any> {
+    const id = crypto.randomUUID();
+    const now = new Date();
+
+    await this.insert({
+      tableName: TABLE_REFRESH_TOKENS as any,
+      record: {
+        id,
+        user_id: token.userId,
+        token_hash: token.tokenHash,
+        expires_at: token.expiresAt.toISOString(),
+        ip_address: token.ipAddress || null,
+        user_agent: token.userAgent || null,
+        family_id: token.familyId || null,
+        created_at: now.toISOString(),
+      },
+    });
+
+    return {
+      id,
+      userId: token.userId,
+      tokenHash: token.tokenHash,
+      expiresAt: token.expiresAt,
+      ipAddress: token.ipAddress,
+      userAgent: token.userAgent,
+      familyId: token.familyId,
+      createdAt: now,
+    };
+  }
+
+  /**
+   * Get refresh token by hash
+   */
+  async getRefreshTokenByHash(tokenHash: string): Promise<any | null> {
+    const result = await this.query(
+      `SELECT * FROM ${TABLE_REFRESH_TOKENS} WHERE token_hash = $1`,
+      [tokenHash]
+    );
+
+    if (result.length === 0) {
+      return null;
+    }
+
+    const row = result[0];
+    return {
+      id: row.id,
+      userId: row.user_id,
+      tokenHash: row.token_hash,
+      expiresAt: new Date(row.expires_at),
+      ipAddress: row.ip_address || undefined,
+      userAgent: row.user_agent || undefined,
+      familyId: row.family_id || undefined,
+      createdAt: new Date(row.created_at),
+    };
+  }
+
+  /**
+   * Delete refresh token
+   */
+  async deleteRefreshToken(tokenId: string): Promise<void> {
+    await this.query(
+      `DELETE FROM ${TABLE_REFRESH_TOKENS} WHERE id = $1`,
+      [tokenId]
+    );
+  }
+
+  /**
+   * Delete all refresh tokens for a user
+   * If familyId is provided, only delete tokens in that family
+   */
+  async deleteAllRefreshTokens(userId: string, familyId?: string): Promise<number> {
+    const params: any[] = [userId];
+    let sql = `DELETE FROM ${TABLE_REFRESH_TOKENS} WHERE user_id = $1`;
+
+    if (familyId) {
+      sql += ` AND family_id = $2`;
+      params.push(familyId);
+    }
+
+    const result = await this.query(sql, params);
+    return result.rowCount || 0;
+  }
+
+  /**
+   * Clean up expired refresh tokens
+   */
+  async cleanupExpiredRefreshTokens(): Promise<number> {
+    const result = await this.query(
+      `DELETE FROM ${TABLE_REFRESH_TOKENS} WHERE expires_at < NOW()`
+    );
+    return result.rowCount || 0;
   }
 }
