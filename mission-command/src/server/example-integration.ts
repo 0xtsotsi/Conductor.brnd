@@ -1,8 +1,8 @@
 /**
  * Mission Command Server Integration Example
  *
- * This file shows how to integrate the OAuth handler and user management API
- * into a Mastra server instance.
+ * This file shows how to integrate the OAuth handler, user management API,
+ * and audit logging system into a Mastra server instance.
  *
  * Setup:
  * 1. Configure environment variables (see .env.example)
@@ -16,9 +16,13 @@ import { createOAuthHandler } from './oauth-handler';
 import { createUsersAPI } from './users-api';
 import { createLibSQLUserStorage, runUserMigration } from './user-storage';
 import { createLibsqlStore } from '@mastra/storage-libsql';
+import { createAuditService } from '../auth/audit-service';
+import { createAuditMiddlewareStack } from './audit-middleware';
+import { createAuditAPI } from './audit-api';
+import { createWorkflowsAPI, PgWorkflowStorage, runWorkflowDefinitionsMigration } from './workflow-storage';
 
 /**
- * Create Mission Command server with OAuth authentication
+ * Create Mission Command server with OAuth authentication and audit logging
  */
 export async function createMissionCommandServer() {
   // Initialize LibSQL storage
@@ -29,8 +33,21 @@ export async function createMissionCommandServer() {
   // Run user migration to create table
   await runUserMigration(storage);
 
+  // Run workflow definitions migration
+  await runWorkflowDefinitionsMigration(storage);
+
   // Create user storage adapter
   const userStorage = createLibSQLUserStorage(storage);
+
+  // Create workflow storage adapter
+  const workflowStorage = new PgWorkflowStorage(storage);
+
+  // Create audit service
+  const auditService = createAuditService({
+    storage: userStorage,
+    retentionDays: 90,
+    logger: console,
+  });
 
   // Create OAuth handler
   const oauthHandler = createOAuthHandler({
@@ -53,6 +70,25 @@ export async function createMissionCommandServer() {
     storage: userStorage,
   });
 
+  // Create audit API
+  const auditAPI = createAuditAPI({
+    auditService,
+  });
+
+  // Create workflows API
+  const workflowsAPI = createWorkflowsAPI({
+    storage: workflowStorage,
+  });
+
+  // Create audit middleware stack
+  const auditMiddleware = createAuditMiddlewareStack({
+    auditService,
+    logSuccess: true,
+    logFailure: true,
+    logBody: false,
+    excludePaths: ['/health', '/metrics'],
+  });
+
   // Create Mission Command auth
   const auth = new MissionCommandAuth({
     secret: process.env.JWT_AUTH_SECRET || 'your-secret-key',
@@ -67,11 +103,20 @@ export async function createMissionCommandServer() {
   // Get Hono app
   const app = mastra.getServer();
 
+  // Apply audit middleware to all API routes
+  app.use('/api/*', auditMiddleware);
+
   // Mount OAuth handler
-  app.route('/', oauthHandler);
+  app.route('/api/auth', oauthHandler);
 
   // Mount user management API
-  app.route('/', usersAPI);
+  app.route('/api/users', usersAPI);
+
+  // Mount audit API
+  app.route('/api/audit', auditAPI);
+
+  // Mount workflows API
+  app.route('/', workflowsAPI);
 
   return mastra;
 }

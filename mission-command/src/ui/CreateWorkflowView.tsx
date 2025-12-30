@@ -9,7 +9,7 @@ import { useState } from 'react';
 import { z } from 'zod';
 
 export type CreateWorkflowViewProps = {
-  mode: 'create' | 'edit';
+  mode?: 'create' | 'edit';
   initialWorkflow?: {
     id?: string;
     name: string;
@@ -20,6 +20,7 @@ export type CreateWorkflowViewProps = {
   };
   onSave: (workflow: WorkflowConfig) => Promise<void>;
   onCancel: () => void;
+  currentUserRole?: string;
 };
 
 export type WorkflowStepConfig = {
@@ -45,10 +46,11 @@ export type WorkflowConfig = {
  * Provides a form-based interface for workflow creation and editing.
  */
 export function CreateWorkflowView({
-  mode,
+  mode = 'create',
   initialWorkflow,
   onSave,
   onCancel,
+  currentUserRole,
 }: CreateWorkflowViewProps) {
   const [name, setName] = useState(initialWorkflow?.name || '');
   const [description, setDescription] = useState(initialWorkflow?.description || '');
@@ -63,11 +65,45 @@ export function CreateWorkflowView({
   );
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [inputSchemaError, setInputSchemaError] = useState<string | null>(null);
+  const [outputSchemaError, setOutputSchemaError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
     setError(null);
+    setInputSchemaError(null);
+    setOutputSchemaError(null);
+
+    // Validate required fields
+    if (!name.trim()) {
+      setError('Workflow name is required');
+      setIsSaving(false);
+      return;
+    }
+
+    if (steps.length === 0) {
+      setError('At least one step is required');
+      setIsSaving(false);
+      return;
+    }
+
+    // Validate JSON schemas
+    try {
+      JSON.parse(JSON.stringify(inputSchema));
+    } catch (err) {
+      setInputSchemaError('Invalid JSON in input schema');
+      setIsSaving(false);
+      return;
+    }
+
+    try {
+      JSON.parse(JSON.stringify(outputSchema));
+    } catch (err) {
+      setOutputSchemaError('Invalid JSON in output schema');
+      setIsSaving(false);
+      return;
+    }
 
     try {
       const workflow: WorkflowConfig = {
@@ -79,6 +115,7 @@ export function CreateWorkflowView({
       };
 
       await onSave(workflow);
+      // Note: setIsSaving(false) is handled by the onSuccess navigation
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save workflow');
       setIsSaving(false);
@@ -167,14 +204,17 @@ export function CreateWorkflowView({
               onChange={(e) => {
                 try {
                   setInputSchema(JSON.parse(e.target.value));
-                  setError(null);
+                  setInputSchemaError(null);
                 } catch (err) {
-                  setError('Invalid JSON in input schema');
+                  setInputSchemaError('Invalid JSON in input schema');
                 }
               }}
-              className="w-full px-3 py-2 border rounded-md font-mono text-sm"
+              className={`w-full px-3 py-2 border rounded-md font-mono text-sm ${inputSchemaError ? 'border-destructive' : ''}`}
               rows={10}
             />
+            {inputSchemaError && (
+              <p className="text-destructive text-sm mt-1">{inputSchemaError}</p>
+            )}
           </div>
 
           <div>
@@ -186,14 +226,17 @@ export function CreateWorkflowView({
               onChange={(e) => {
                 try {
                   setOutputSchema(JSON.parse(e.target.value));
-                  setError(null);
+                  setOutputSchemaError(null);
                 } catch (err) {
-                  setError('Invalid JSON in output schema');
+                  setOutputSchemaError('Invalid JSON in output schema');
                 }
               }}
-              className="w-full px-3 py-2 border rounded-md font-mono text-sm"
+              className={`w-full px-3 py-2 border rounded-md font-mono text-sm ${outputSchemaError ? 'border-destructive' : ''}`}
               rows={10}
             />
+            {outputSchemaError && (
+              <p className="text-destructive text-sm mt-1">{outputSchemaError}</p>
+            )}
           </div>
         </div>
 

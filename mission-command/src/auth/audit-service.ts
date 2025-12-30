@@ -379,6 +379,19 @@ export class AuditService {
   }
 
   /**
+   * Get a specific audit log entry by ID
+   */
+  async getAuditLogById(logId: string): Promise<AuditLogEntry | null> {
+    try {
+      const log = await this.storage.getAuditLogById?.(logId);
+      return log || null;
+    } catch (error) {
+      this.logger.error(`Failed to get audit log ${logId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
    * Get retention period in days
    */
   getRetentionDays(): number {
@@ -396,6 +409,18 @@ export class AuditService {
 
   /**
    * Sanitize event details to prevent log injection attacks
+   *
+   * Log injection attacks can occur when untrusted input is logged directly,
+   * potentially allowing attackers to:
+   * - Inject fake log entries via newline characters
+   * - Execute code via terminal escape sequences
+   * - Corrupt log file parsing
+   *
+   * This function removes:
+   * - Newline characters (which could create fake log entries)
+   * - Control characters (which could execute commands)
+   * - Terminal escape sequences (ANSI codes)
+   * - Other potentially dangerous characters
    */
   private sanitizeDetails(details: Record<string, any>): Record<string, any> {
     const sanitized: Record<string, any> = {};
@@ -405,16 +430,49 @@ export class AuditService {
         continue;
       }
 
-      // Convert to string and sanitize
-      const strValue = String(value);
+      // Handle nested objects recursively
+      if (typeof value === 'object' && !Array.isArray(value)) {
+        sanitized[key] = this.sanitizeDetails(value);
+        continue;
+      }
 
-      // Remove potential log injection patterns
-      sanitized[key] = strValue
-        .replace(/[\n\r\t]/g, ' ') // Remove newlines and tabs
-        .replace(/[\x00-\x1F\x7F]/g, ''); // Remove control characters
+      // Handle arrays
+      if (Array.isArray(value)) {
+        sanitized[key] = value.map(item =>
+          typeof item === 'object' && item !== null
+            ? this.sanitizeDetails(item)
+            : this.sanitizeValue(String(item))
+        );
+        continue;
+      }
+
+      // Sanitize string values
+      const strValue = String(value);
+      sanitized[key] = this.sanitizeValue(strValue);
     }
 
     return sanitized;
+  }
+
+  /**
+   * Sanitize a single string value to prevent log injection
+   */
+  private sanitizeValue(strValue: string): string {
+    return strValue
+      // Remove newline and carriage return (log injection)
+      .replace(/[\n\r]/g, ' ')
+      // Remove tab characters
+      .replace(/\t/g, ' ')
+      // Remove ANSI escape sequences (terminal command injection)
+      .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '')
+      // Remove other control characters (0x00-0x1F)
+      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
+      // Remove potentially dangerous Unicode characters
+      .replace(/[\u2028-\u2029\uFFFE\uFFFF]/g, '')
+      // Sanitize against CRLF injection in headers
+      .replace(/%0D%0A/gi, '')
+      .replace(/%0A/gi, '')
+      .replace(/%0D/gi, '');
   }
 }
 

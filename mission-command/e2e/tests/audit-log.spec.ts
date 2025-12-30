@@ -655,6 +655,123 @@ test.describe('Audit Log Retrieval (Admin)', () => {
       expect(firstDate.getTime()).toBeGreaterThanOrEqual(secondDate.getTime());
     }
   });
+
+  test('should allow admin to retrieve specific log entry by ID', async ({ apiClient, dbHelper }) => {
+    const pool = await dbHelper.getTestDbConnection();
+    const token = await apiClient.loginAs('admin');
+
+    // Create a test log
+    const log = await dbHelper.createAuditLog(pool, {
+      action: 'test.specific.log',
+      user_id: 'test-user-123',
+      resource: 'test-resource',
+      details: { test: 'data', key: 'value' },
+    });
+
+    // Get the specific log by ID
+    const response = await apiClient.authenticatedRequest(
+      'GET',
+      `/api/audit/logs/${log.id}`,
+      undefined,
+      token
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.data.id).toBe(log.id);
+    expect(response.data.action).toBe('test.specific.log');
+    expect(response.data.user_id).toBe('test-user-123');
+    expect(response.data.resource).toBe('test-resource');
+    expect(response.data.details).toBeDefined();
+    expect(response.data._metadata).toBeDefined();
+    expect(response.data._metadata.viewedBy).toBeDefined();
+  });
+
+  test('should return 404 for non-existent log ID', async ({ apiClient }) => {
+    const token = await apiClient.loginAs('admin');
+
+    // Try to get non-existent log
+    const response = await apiClient.authenticatedRequest(
+      'GET',
+      '/api/audit/logs/00000000-0000-0000-0000-000000000000',
+      undefined,
+      token
+    );
+
+    expect(response.status).toBe(404);
+    expect(response.data.error).toContain('not found');
+  });
+
+  test('should reject invalid log ID format', async ({ apiClient }) => {
+    const token = await apiClient.loginAs('admin');
+
+    // Try to get with invalid ID format
+    const response = await apiClient.authenticatedRequest(
+      'GET',
+      '/api/audit/logs/invalid-id-format',
+      undefined,
+      token
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.data.error).toContain('Invalid');
+  });
+
+  test('should not allow non-admin to retrieve specific log entry', async ({ apiClient, dbHelper }) => {
+    const pool = await dbHelper.getTestDbConnection();
+    const token = await apiClient.loginAs('operator');
+
+    // Create a test log
+    const log = await dbHelper.createAuditLog(pool, {
+      action: 'test.specific.log',
+      user_id: 'test-user-123',
+    });
+
+    // Try to get the specific log by ID (should fail with 403)
+    try {
+      await apiClient.authenticatedRequest(
+        'GET',
+        `/api/audit/logs/${log.id}`,
+        undefined,
+        token
+      );
+      // Should not reach here
+      expect(true).toBe(false);
+    } catch (error: any) {
+      expect(error.response?.status).toBe(403);
+    }
+  });
+
+  test('should log when admin views specific audit log entry', async ({ apiClient, dbHelper }) => {
+    const pool = await dbHelper.getTestDbConnection();
+    const token = await apiClient.loginAs('admin');
+
+    // Create a test log
+    const log = await dbHelper.createAuditLog(pool, {
+      action: 'test.specific.log',
+      user_id: 'test-user-123',
+    });
+
+    // Get the specific log by ID
+    await apiClient.authenticatedRequest(
+      'GET',
+      `/api/audit/logs/${log.id}`,
+      undefined,
+      token
+    );
+
+    // Verify that viewing the log was itself logged
+    await new Promise(resolve => setTimeout(resolve, 500)); // Wait for async log
+
+    const logs = await dbHelper.getAuditLogs(pool, '', 100, 0);
+    const viewLog = logs.find(l =>
+      l.action === 'auth.resource.access' &&
+      l.resource === 'audit_log' &&
+      l.resource_id === log.id
+    );
+
+    expect(viewLog).toBeDefined();
+    expect(viewLog?.details?.viewedLogAction).toBe('test.specific.log');
+  });
 });
 
 /**

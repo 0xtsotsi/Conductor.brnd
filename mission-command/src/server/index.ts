@@ -39,7 +39,6 @@ export {
 
 export type {
   UserSession,
-  AuditLogEntry,
 } from './user-storage';
 
 // Export user management API
@@ -110,6 +109,24 @@ export type {
   AuditMiddlewareOptions,
 } from './audit-middleware';
 
+// Export JWT authentication middleware
+export {
+  createJwtMiddleware,
+  requireAuth,
+  optionalAuth,
+  getUser,
+  getUserId,
+  getUserEmail,
+  getUserRole,
+} from './jwt-middleware';
+
+export type {
+  JwtPayload,
+  MissionCommandUser,
+  ContextWithUser,
+  JwtMiddlewareOptions,
+} from './jwt-middleware';
+
 // Export audit API
 export {
   createAuditAPI,
@@ -118,3 +135,56 @@ export {
 export type {
   AuditAPIOptions,
 } from './audit-api';
+
+// Export missions API
+export {
+  createMissionsAPI,
+} from './handlers/missions';
+
+export type {
+  MissionRun,
+  TimelineStep,
+  MissionsAPIOptions,
+} from './handlers/missions';
+
+// Export approvals API
+export {
+  createApprovalsAPI,
+} from './handlers/approvals';
+
+export type {
+  SuspendData,
+  ApprovalStatus,
+  ApprovalEntry,
+  ApprovalDetails,
+  ApprovalHistoryEntry,
+  ApprovalsAPIOptions,
+} from './handlers/approvals';
+
+// Export workflows API
+export {
+  createWorkflowsAPI,
+} from './handlers/workflows';
+
+export type {
+  WorkflowDefinition,
+  WorkflowStepConfig,
+  WorkflowDefinitionStorage,
+  WorkflowsAPIOptions,
+} from './handlers/workflows';
+
+// Export workflow storage
+export {
+  PgWorkflowStorage,
+  runWorkflowDefinitionsMigration,
+  CREATE_WORKFLOW_DEFINITIONS_TABLE_SQL,
+} from './workflow-storage';
+
+// Export Mastra workflow execution system
+export {
+  createMastraSystem,
+} from './mastra-server';
+
+export type {
+  MastraServerOptions,
+} from './mastra-server';

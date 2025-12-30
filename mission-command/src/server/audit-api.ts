@@ -13,6 +13,7 @@
 
 import { Hono } from 'hono';
 import { requireRole } from '@mastra/auth/rbac-middleware';
+import { requireAuth } from './jwt-middleware';
 import type { AuditService, AuditLogFilters, AuditEventType } from '../auth/audit-service';
 import type { MissionCommandUser } from '@mastra/auth';
 
@@ -30,6 +31,9 @@ export interface AuditAPIOptions {
 export function createAuditAPI(options: AuditAPIOptions) {
   const app = new Hono();
   const { auditService } = options;
+
+  // Apply JWT authentication middleware to all routes
+  app.use('/api/audit/*', requireAuth());
 
   /**
    * Route: List audit logs with filters
@@ -128,10 +132,45 @@ export function createAuditAPI(options: AuditAPIOptions) {
   app.get('/api/audit/logs/:id', requireRole('admin'), async (c) => {
     try {
       const id = c.req.param('id');
+      const user = c.get('user') as MissionCommandUser;
 
-      // Note: This requires storage to support getAuditLogById
-      // For now, return not found
-      return c.json({ error: 'Not implemented' }, 501);
+      // Validate ID format (UUID)
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(id)) {
+        return c.json({ error: 'Invalid log entry ID format' }, 400);
+      }
+
+      // Query storage for the specific log entry
+      const logEntry = await auditService.getAuditLogById(id);
+
+      if (!logEntry) {
+        return c.json({ error: 'Audit log entry not found' }, 404);
+      }
+
+      // Log this access for audit trail (admins viewing audit logs)
+      await auditService.logAuthEvent({
+        userId: user.sub,
+        action: 'auth.resource.access',
+        resource: 'audit_log',
+        resourceId: id,
+        details: {
+          userEmail: user.email,
+          userRole: user.role,
+          viewedLogAction: logEntry.action,
+          viewedLogResource: logEntry.resource,
+        },
+        ipAddress: c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || undefined,
+        userAgent: c.req.header('user-agent'),
+        success: true,
+      });
+
+      return c.json({
+        ...logEntry,
+        _metadata: {
+          viewedBy: user.email,
+          viewedAt: new Date().toISOString(),
+        },
+      });
     } catch (error) {
       console.error('Failed to get audit log:', error);
       return c.json({

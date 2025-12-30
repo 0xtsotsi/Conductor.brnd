@@ -738,6 +738,31 @@ export class PgUserStorage extends PgDB implements OAuthStorage {
     }));
   }
 
+  /**
+   * Get a specific audit log entry by ID
+   */
+  async getAuditLogById(logId: string): Promise<AuditLogEntry | null> {
+    const result = await this.query(
+      `SELECT * FROM ${TABLE_AUDIT_LOG} WHERE id = $1`,
+      [logId]
+    );
+
+    if (result.length === 0) {
+      return null;
+    }
+
+    const row = result[0];
+    return {
+      id: row.id,
+      userId: row.user_id || undefined,
+      action: row.action,
+      resource: row.resource || undefined,
+      details: row.details ? JSON.parse(row.details) : undefined,
+      ipAddress: row.ip_address || undefined,
+      createdAt: new Date(row.created_at),
+    };
+  }
+
 
   /**
    * List all users with pagination

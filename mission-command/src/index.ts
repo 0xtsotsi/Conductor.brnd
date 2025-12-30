@@ -7,6 +7,9 @@
 // Export GitHub tools
 export * from './tools/github-tools';
 
+// Export agents
+export * from './agents';
+
 // Export workflows
 export * from './workflows';
 

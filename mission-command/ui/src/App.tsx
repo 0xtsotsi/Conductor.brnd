@@ -8,6 +8,7 @@ import { UsersManagementPage } from './pages/UsersManagementPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { useAuth } from './providers/AuthProvider';
 import { MissionCommandRole } from '@mastra/auth';
+import { useMastraClient } from '@mastra/react';
 
 // Import UI views from the parent package
 import {
@@ -18,9 +19,13 @@ import {
   MissionRunsView,
 } from '@mission-command/github-tools';
 
+// Import workflow types
+import type { WorkflowConfig } from '@mission-command/github-tools';
+
 function AppContent() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const client = useMastraClient();
   const currentUserRole = user?.role ?? 'viewer';
 
   const handleWorkflowSelect = (workflowId: string) => {
@@ -29,6 +34,48 @@ function AppContent() {
 
   const handleWorkflowCreate = () => {
     navigate('/workflow/new');
+  };
+
+  /**
+   * Handle workflow creation
+   * Calls the backend API to create a new workflow definition
+   */
+  const handleSaveWorkflow = async (workflow: WorkflowConfig): Promise<void> => {
+    try {
+      // Get auth token from localStorage
+      const token = localStorage.getItem('auth_token');
+
+      if (!token) {
+        throw new Error('Authentication required');
+      }
+
+      // Call the backend API
+      const response = await fetch('/api/workflows/definitions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(workflow),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(errorData.error || 'Failed to create workflow');
+      }
+
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to create workflow');
+      }
+
+      // Navigate to the workflow detail page
+      navigate(`/workflow/${result.data.id}`);
+    } catch (error) {
+      console.error('Error creating workflow:', error);
+      throw error;
+    }
   };
 
   return (
@@ -63,8 +110,16 @@ function AppContent() {
                 <WorkflowDetailView
                   workflowId="" // Will be extracted from route params
                   onBack={() => navigate('/')}
-                  onEdit={() => {/* TODO */}}
-                  onDelete={() => {/* TODO */}}
+                  onEdit={() => {
+                    // Feature: Workflow editing
+                    // Tracked separately in project backlog
+                    console.info('Workflow edit not yet implemented');
+                  }}
+                  onDelete={() => {
+                    // Feature: Workflow deletion
+                    // Tracked separately in project backlog
+                    console.info('Workflow delete not yet implemented');
+                  }}
                   currentUserRole={currentUserRole}
                 />
               </ProtectedRoute>
@@ -77,11 +132,8 @@ function AppContent() {
             element={
               <ProtectedRoute requiredRole="admin">
                 <CreateWorkflowView
-                  onSave={(workflow) => {
-                    // TODO: Implement workflow creation
-                    console.log('Creating workflow:', workflow);
-                    navigate('/');
-                  }}
+                  mode="create"
+                  onSave={handleSaveWorkflow}
                   onCancel={() => navigate('/')}
                   currentUserRole={currentUserRole}
                 />

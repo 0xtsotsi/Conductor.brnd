@@ -206,6 +206,11 @@ export interface OAuthStorage {
   getAllAuditLogs?(limit?: number, offset?: number): Promise<any[]>;
 
   /**
+   * Get a specific audit log entry by ID
+   */
+  getAuditLogById?(logId: string): Promise<any | null>;
+
+  /**
    * Create a refresh token
    */
   createRefreshToken?(token: Omit<RefreshToken, 'id' | 'createdAt'>): Promise<RefreshToken>;

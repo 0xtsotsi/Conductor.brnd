@@ -13,6 +13,10 @@
       "types": "./src/tools/github-tools.ts",
       "import": "./src/tools/github-tools.ts"
     },
+    "./agents": {
+      "types": "./src/agents/index.ts",
+      "import": "./src/agents/index.ts"
+    },
     "./workflows": {
       "types": "./src/workflows/index.ts",
       "import": "./src/workflows/index.ts"
@@ -30,6 +34,11 @@
     "test": "vitest",
     "test:watch": "vitest --watch",
     "test:ui": "vitest --ui",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:debug": "playwright test --debug",
+    "test:e2e:install": "playwright install --with-deps",
+    "test:e2e:report": "playwright show-report",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src --ext .ts",
     "format": "prettier --write \"src/**/*.ts\""
@@ -57,11 +66,12 @@
     "zod": "^3.22.4"
   },
   "devDependencies": {
+    "@playwright/test": "^1.57.0",
     "@types/node": "^22.10.5",
-    "typescript": "^5.7.3",
-    "vitest": "^3.0.5",
     "eslint": "^9.18.0",
-    "prettier": "^3.4.2"
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
   },
   "engines": {
     "node": ">=18.0.0"

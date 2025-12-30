@@ -28,6 +28,11 @@ export interface AuthContextValue {
   isAuthenticated: boolean;
 
   /**
+   * Current JWT token (for API requests)
+   */
+  token: string | null;
+
+  /**
    * Login function - initiates OAuth flow
    */
   login: (provider?: 'github' | 'google' | 'keycloak', options?: { redirectUri?: string }) => void;
@@ -130,26 +135,29 @@ export function AuthProvider({ children, apiUrl = '/api', loginUrl = '/api/auth/
   const [user, setUser] = useState<MissionCommandUser | null>(null);
   const [role, setRole] = useState<MissionCommandRole | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [token, setToken] = useState<string | null>(null);
 
   /**
    * Refresh user data from current JWT
    */
   const refresh = () => {
-    const token = getJWT();
+    const currentToken = getJWT();
 
-    if (!token) {
+    if (!currentToken) {
       setUser(null);
       setRole(null);
       setIsAuthenticated(false);
+      setToken(null);
       return;
     }
 
-    const payload = parseJWT(token);
+    const payload = parseJWT(currentToken);
 
     if (!payload) {
       setUser(null);
       setRole(null);
       setIsAuthenticated(false);
+      setToken(null);
       return;
     }
 
@@ -161,6 +169,7 @@ export function AuthProvider({ children, apiUrl = '/api', loginUrl = '/api/auth/
       setUser(null);
       setRole(null);
       setIsAuthenticated(false);
+      setToken(null);
       return;
     }
 
@@ -176,6 +185,7 @@ export function AuthProvider({ children, apiUrl = '/api', loginUrl = '/api/auth/
     setUser(userObj);
     setRole(userObj.role);
     setIsAuthenticated(true);
+    setToken(currentToken);
   };
 
   /**
@@ -228,6 +238,7 @@ export function AuthProvider({ children, apiUrl = '/api', loginUrl = '/api/auth/
       setUser(null);
       setRole(null);
       setIsAuthenticated(false);
+      setToken(null);
 
       // Redirect to home
       window.location.href = '/';
@@ -238,6 +249,7 @@ export function AuthProvider({ children, apiUrl = '/api', loginUrl = '/api/auth/
     user,
     role,
     isAuthenticated,
+    token,
     login,
     logout,
     refresh,
