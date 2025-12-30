@@ -1,11 +1,47 @@
 /**
  * Mission Command User Storage
  *
- * Provides storage for Mission Command users.
+ * Provides storage for Mission Command users, sessions, and audit logs.
  * Uses LibSQL (SQLite) for development, supports PostgreSQL for production.
  */
 
+import type { IDatabase } from 'pg-promise';
+import type { PgDomainConfig } from '../../../../stores/pg/src/storage/db';
+import { PgDB } from '../../../../stores/pg/src/storage/db';
 import type { OAuthStorage } from './oauth-handler';
+
+/**
+ * Table names
+ */
+const TABLE_USERS = 'mission_command_users';
+const TABLE_SESSIONS = 'mission_command_user_sessions';
+const TABLE_AUDIT_LOG = 'mission_command_audit_log';
+
+/**
+ * User session data
+ */
+export interface UserSession {
+  id: string;
+  userId: string;
+  tokenHash: string;
+  expiresAt: Date;
+  createdAt: Date;
+  ipAddress?: string;
+  userAgent?: string;
+}
+
+/**
+ * Audit log entry
+ */
+export interface AuditLogEntry {
+  id: string;
+  userId?: string;
+  action: string;
+  resource?: string;
+  details?: Record<string, any>;
+  ipAddress?: string;
+  createdAt: Date;
+}
 
 /**
  * Create a LibSQL-based user storage
@@ -129,9 +165,10 @@ export function createInMemoryUserStorage(): OAuthStorage {
 }
 
 /**
- * Database migration SQL for creating users table
+ * Database migration SQL for creating users, sessions, and audit_log tables
  */
 export const CREATE_USERS_TABLE_SQL = `
+-- Users table
 CREATE TABLE IF NOT EXISTS mission_command_users (
   id TEXT PRIMARY KEY,
   sub TEXT NOT NULL,
@@ -148,6 +185,38 @@ CREATE TABLE IF NOT EXISTS mission_command_users (
 CREATE INDEX IF NOT EXISTS idx_users_sub_provider ON mission_command_users(sub, provider);
 CREATE INDEX IF NOT EXISTS idx_users_email ON mission_command_users(email);
 CREATE INDEX IF NOT EXISTS idx_users_role ON mission_command_users(role);
+
+-- User sessions table
+CREATE TABLE IF NOT EXISTS mission_command_user_sessions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  token_hash TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  ip_address TEXT,
+  user_agent TEXT,
+  FOREIGN KEY (user_id) REFERENCES mission_command_users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON mission_command_user_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON mission_command_user_sessions(expires_at);
+CREATE INDEX IF NOT EXISTS idx_sessions_token_hash ON mission_command_user_sessions(token_hash);
+
+-- Audit log table
+CREATE TABLE IF NOT EXISTS mission_command_audit_log (
+  id TEXT PRIMARY KEY,
+  user_id TEXT,
+  action TEXT NOT NULL,
+  resource TEXT,
+  details TEXT,
+  ip_address TEXT,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (user_id) REFERENCES mission_command_users(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_user_id ON mission_command_audit_log(user_id);
+CREATE INDEX IF NOT EXISTS idx_audit_created_at ON mission_command_audit_log(created_at);
+CREATE INDEX IF NOT EXISTS idx_audit_action ON mission_command_audit_log(action);
 `;
 
 /**
@@ -155,4 +224,457 @@ CREATE INDEX IF NOT EXISTS idx_users_role ON mission_command_users(role);
  */
 export async function runUserMigration(db: any) {
   await db.execute(CREATE_USERS_TABLE_SQL);
+}
+
+/**
+ * Schema definitions for PostgreSQL tables
+ */
+const USERS_SCHEMA = {
+  id: { type: 'uuid', primaryKey: true },
+  sub: { type: 'text', nullable: false },
+  email: { type: 'text', nullable: false },
+  name: { type: 'text', nullable: true },
+  avatar_url: { type: 'text', nullable: true },
+  provider: { type: 'text', nullable: false },
+  role: { type: 'text', nullable: false },
+  created_at: { type: 'timestamp', nullable: false },
+  updated_at: { type: 'timestamp', nullable: false },
+};
+
+const SESSIONS_SCHEMA = {
+  id: { type: 'uuid', primaryKey: true },
+  user_id: { type: 'uuid', nullable: false },
+  token_hash: { type: 'text', nullable: false },
+  expires_at: { type: 'timestamp', nullable: false },
+  created_at: { type: 'timestamp', nullable: false },
+  ip_address: { type: 'text', nullable: true },
+  user_agent: { type: 'text', nullable: true },
+};
+
+const AUDIT_LOG_SCHEMA = {
+  id: { type: 'uuid', primaryKey: true },
+  user_id: { type: 'uuid', nullable: true },
+  action: { type: 'text', nullable: false },
+  resource: { type: 'text', nullable: true },
+  details: { type: 'jsonb', nullable: true },
+  ip_address: { type: 'text', nullable: true },
+  created_at: { type: 'timestamp', nullable: false },
+};
+
+/**
+ * PostgreSQL-based user storage
+ */
+export class PgUserStorage extends PgDB implements OAuthStorage {
+  constructor(config: PgDomainConfig) {
+    super(config);
+  }
+
+  /**
+   * Initialize all database tables
+   */
+  async init(): Promise<void> {
+    // Create users table
+    await this.createTable({
+      tableName: TABLE_USERS as any,
+      schema: USERS_SCHEMA,
+    });
+
+    await this.createIndex({
+      name: 'idx_users_sub_provider_pg',
+      table: TABLE_USERS as any,
+      columns: ['sub', 'provider'],
+      unique: true,
+    });
+
+    await this.createIndex({
+      name: 'idx_users_email_pg',
+      table: TABLE_USERS as any,
+      columns: ['email'],
+      unique: true,
+    });
+
+    await this.createIndex({
+      name: 'idx_users_role_pg',
+      table: TABLE_USERS as any,
+      columns: ['role'],
+    });
+
+    // Create sessions table
+    await this.createTable({
+      tableName: TABLE_SESSIONS as any,
+      schema: SESSIONS_SCHEMA,
+    });
+
+    await this.createIndex({
+      name: 'idx_sessions_user_id_pg',
+      table: TABLE_SESSIONS as any,
+      columns: ['user_id'],
+    });
+
+    await this.createIndex({
+      name: 'idx_sessions_expires_at_pg',
+      table: TABLE_SESSIONS as any,
+      columns: ['expires_at'],
+    });
+
+    await this.createIndex({
+      name: 'idx_sessions_token_hash_pg',
+      table: TABLE_SESSIONS as any,
+      columns: ['token_hash'],
+    });
+
+    // Create audit log table
+    await this.createTable({
+      tableName: TABLE_AUDIT_LOG as any,
+      schema: AUDIT_LOG_SCHEMA,
+    });
+
+    await this.createIndex({
+      name: 'idx_audit_user_id_pg',
+      table: TABLE_AUDIT_LOG as any,
+      columns: ['user_id'],
+    });
+
+    await this.createIndex({
+      name: 'idx_audit_created_at_pg',
+      table: TABLE_AUDIT_LOG as any,
+      columns: ['created_at'],
+    });
+
+    await this.createIndex({
+      name: 'idx_audit_action_pg',
+      table: TABLE_AUDIT_LOG as any,
+      columns: ['action'],
+    });
+  }
+
+  /**
+   * Find user by OAuth provider
+   */
+  async findUserByProvider(sub: string, provider: string): Promise<any> {
+    const result = await this.query(
+      `SELECT * FROM ${TABLE_USERS} WHERE sub = $1 AND provider = $2`,
+      [sub, provider]
+    );
+
+    if (result.length === 0) {
+      return null;
+    }
+
+    const row = result[0];
+    return {
+      id: row.id,
+      sub: row.sub,
+      email: row.email,
+      name: row.name || undefined,
+      avatar_url: row.avatar_url || undefined,
+      provider: row.provider,
+      role: row.role,
+      created_at: new Date(row.created_at),
+      updated_at: new Date(row.updated_at),
+    };
+  }
+
+  /**
+   * Create new user
+   */
+  async createUser(user: any): Promise<any> {
+    const id = crypto.randomUUID();
+
+    await this.insert({
+      tableName: TABLE_USERS as any,
+      data: {
+        id,
+        sub: user.sub,
+        email: user.email,
+        name: user.name || null,
+        avatar_url: user.avatar_url || null,
+        provider: user.provider,
+        role: user.role,
+        created_at: user.created_at,
+        updated_at: user.updated_at,
+      },
+    });
+
+    return { ...user, id };
+  }
+
+  /**
+   * Update user
+   */
+  async updateUser(id: string, updates: any): Promise<any> {
+    await this.update({
+      tableName: TABLE_USERS as any,
+      data: {
+        ...updates,
+        updated_at: new Date(),
+      },
+      where: { id },
+    });
+
+    const result = await this.query(
+      `SELECT * FROM ${TABLE_USERS} WHERE id = $1`,
+      [id]
+    );
+
+    if (result.length === 0) {
+      throw new Error(`User not found: ${id}`);
+    }
+
+    const row = result[0];
+    return {
+      id: row.id,
+      sub: row.sub,
+      email: row.email,
+      name: row.name || undefined,
+      avatar_url: row.avatar_url || undefined,
+      provider: row.provider,
+      role: row.role,
+      created_at: new Date(row.created_at),
+      updated_at: new Date(row.updated_at),
+    };
+  }
+
+  /**
+   * Get user by ID
+   */
+  async getUser(userId: string): Promise<any> {
+    const result = await this.query(
+      `SELECT * FROM ${TABLE_USERS} WHERE id = $1`,
+      [userId]
+    );
+
+    if (result.length === 0) {
+      return null;
+    }
+
+    const row = result[0];
+    return {
+      id: row.id,
+      sub: row.sub,
+      email: row.email,
+      name: row.name || undefined,
+      avatar_url: row.avatar_url || undefined,
+      provider: row.provider,
+      role: row.role,
+      created_at: new Date(row.created_at),
+      updated_at: new Date(row.updated_at),
+    };
+  }
+
+  /**
+   * Get user by email
+   */
+  async getUserByEmail(email: string): Promise<any> {
+    const result = await this.query(
+      `SELECT * FROM ${TABLE_USERS} WHERE email = $1`,
+      [email]
+    );
+
+    if (result.length === 0) {
+      return null;
+    }
+
+    const row = result[0];
+    return {
+      id: row.id,
+      sub: row.sub,
+      email: row.email,
+      name: row.name || undefined,
+      avatar_url: row.avatar_url || undefined,
+      provider: row.provider,
+      role: row.role,
+      created_at: new Date(row.created_at),
+      updated_at: new Date(row.updated_at),
+    };
+  }
+
+  /**
+   * Create user session
+   */
+  async createSession(session: Omit<UserSession, 'id' | 'createdAt'>): Promise<UserSession> {
+    const id = crypto.randomUUID();
+    const createdAt = new Date();
+
+    await this.insert({
+      tableName: TABLE_SESSIONS as any,
+      data: {
+        id,
+        user_id: session.userId,
+        token_hash: session.tokenHash,
+        expires_at: session.expiresAt,
+        created_at: createdAt,
+        ip_address: session.ipAddress || null,
+        user_agent: session.userAgent || null,
+      },
+    });
+
+    return {
+      id,
+      userId: session.userId,
+      tokenHash: session.tokenHash,
+      expiresAt: session.expiresAt,
+      createdAt,
+      ipAddress: session.ipAddress,
+      userAgent: session.userAgent,
+    };
+  }
+
+  /**
+   * Get session by ID
+   */
+  async getSession(sessionId: string): Promise<UserSession | null> {
+    const result = await this.query(
+      `SELECT * FROM ${TABLE_SESSIONS} WHERE id = $1`,
+      [sessionId]
+    );
+
+    if (result.length === 0) {
+      return null;
+    }
+
+    const row = result[0];
+    return {
+      id: row.id,
+      userId: row.user_id,
+      tokenHash: row.token_hash,
+      expiresAt: new Date(row.expires_at),
+      createdAt: new Date(row.created_at),
+      ipAddress: row.ip_address || undefined,
+      userAgent: row.user_agent || undefined,
+    };
+  }
+
+  /**
+   * Get session by token hash
+   */
+  async getSessionByTokenHash(tokenHash: string): Promise<UserSession | null> {
+    const result = await this.query(
+      `SELECT * FROM ${TABLE_SESSIONS} WHERE token_hash = $1 AND expires_at > NOW()`,
+      [tokenHash]
+    );
+
+    if (result.length === 0) {
+      return null;
+    }
+
+    const row = result[0];
+    return {
+      id: row.id,
+      userId: row.user_id,
+      tokenHash: row.token_hash,
+      expiresAt: new Date(row.expires_at),
+      createdAt: new Date(row.created_at),
+      ipAddress: row.ip_address || undefined,
+      userAgent: row.user_agent || undefined,
+    };
+  }
+
+  /**
+   * Invalidate (delete) a session
+   */
+  async invalidateSession(sessionId: string): Promise<void> {
+    await this.delete({
+      tableName: TABLE_SESSIONS as any,
+      where: { id: sessionId },
+    });
+  }
+
+  /**
+   * Invalidate all sessions for a user
+   */
+  async invalidateAllUserSessions(userId: string): Promise<void> {
+    await this.delete({
+      tableName: TABLE_SESSIONS as any,
+      where: { user_id: userId },
+    });
+  }
+
+  /**
+   * Clean up expired sessions
+   */
+  async cleanupExpiredSessions(): Promise<number> {
+    const result = await this.query(
+      `DELETE FROM ${TABLE_SESSIONS} WHERE expires_at < NOW() RETURNING id`
+    );
+    return result.length;
+  }
+
+  /**
+   * Log audit event
+   */
+  async logAuditEvent(event: Omit<AuditLogEntry, 'id' | 'createdAt'>): Promise<AuditLogEntry> {
+    const id = crypto.randomUUID();
+    const createdAt = new Date();
+
+    await this.insert({
+      tableName: TABLE_AUDIT_LOG as any,
+      data: {
+        id,
+        user_id: event.userId || null,
+        action: event.action,
+        resource: event.resource || null,
+        details: event.details ? JSON.stringify(event.details) : null,
+        ip_address: event.ipAddress || null,
+        created_at: createdAt,
+      },
+    });
+
+    return {
+      id,
+      userId: event.userId,
+      action: event.action,
+      resource: event.resource,
+      details: event.details,
+      ipAddress: event.ipAddress,
+      createdAt,
+    };
+  }
+
+  /**
+   * Get audit logs for a user
+   */
+  async getAuditLogs(
+    userId: string,
+    limit: number = 100,
+    offset: number = 0
+  ): Promise<AuditLogEntry[]> {
+    const result = await this.query(
+      `SELECT * FROM ${TABLE_AUDIT_LOG} WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
+      [userId, limit, offset]
+    );
+
+    return result.map((row: any) => ({
+      id: row.id,
+      userId: row.user_id,
+      action: row.action,
+      resource: row.resource || undefined,
+      details: row.details ? JSON.parse(row.details) : undefined,
+      ipAddress: row.ip_address || undefined,
+      createdAt: new Date(row.created_at),
+    }));
+  }
+
+  /**
+   * Get all audit logs (admin only)
+   */
+  async getAllAuditLogs(
+    limit: number = 100,
+    offset: number = 0
+  ): Promise<AuditLogEntry[]> {
+    const result = await this.query(
+      `SELECT * FROM ${TABLE_AUDIT_LOG} ORDER BY created_at DESC LIMIT $1 OFFSET $2`,
+      [limit, offset]
+    );
+
+    return result.map((row: any) => ({
+      id: row.id,
+      userId: row.user_id || undefined,
+      action: row.action,
+      resource: row.resource || undefined,
+      details: row.details ? JSON.parse(row.details) : undefined,
+      ipAddress: row.ip_address || undefined,
+      createdAt: new Date(row.created_at),
+    }));
+  }
 }

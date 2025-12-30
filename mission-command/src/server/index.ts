@@ -32,8 +32,14 @@ export type {
 export {
   createLibSQLUserStorage,
   createInMemoryUserStorage,
+  PgUserStorage,
   runUserMigration,
   CREATE_USERS_TABLE_SQL,
+} from './user-storage';
+
+export type {
+  UserSession,
+  AuditLogEntry,
 } from './user-storage';
 
 // Export user management API
